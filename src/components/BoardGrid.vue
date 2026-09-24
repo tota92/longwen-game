@@ -232,6 +232,8 @@ const specialIcon: Record<string, string> = {
       v-for="cell in cells"
       :key="cell.id"
       class="gem"
+      role="button"
+      :aria-label="`${ELEMENT_INFO[cell.element].name}宝石 行${cell.row + 1} 列${cell.col + 1}${cell.special ? ' 技能石' : ''}${cell.frozen ? ' 已冻结' : ''}`"
       :class="[
         `el-${cell.element}`,
         {

@@ -311,7 +311,9 @@ export const useGameStore = defineStore('game', () => {
     if (enemy.hp <= 0 && enemy.phase < enemy.phaseHP.length) {
       enemy.phase++
       enemy.hp = enemy.phaseHP[enemy.phase - 1]
-      enemy.countdown = enemy.baseCountdown // 重置倒计时
+      // 重置倒计时（REQ-ENEMY-003）：+1 抵消本回合敌人阶段即将发生的递减，
+      // 使玩家看到的稳定值恰好为 baseCountdown
+      enemy.countdown = enemy.baseCountdown + 1
       addFloat(`${enemy.display} 狂怒！进入第 ${enemy.phase} 阶段`, 'info')
       doShake()
       doFlash()
@@ -365,11 +367,24 @@ export const useGameStore = defineStore('game', () => {
     audio.play('skill')
     await sleep(150) // 让特写先入场
 
+    const firePassive = supports.value.some((h) => h.passiveId === 'fireSkillUp')
+    const heartOfFlame = hasRelic('relic_heart_of_flame')
+    const desperate = hasRelic('relic_desperate_counter') && battle.playerHP < PLAYER_MAX_HP * 0.3
     const dmg = calcSkillDamage(skill.damage, hero.element, {
-      firePassive: supports.value.some((h) => h.passiveId === 'fireSkillUp'),
-      heartOfFlame: hasRelic('relic_heart_of_flame'),
-      desperate: hasRelic('relic_desperate_counter') && battle.playerHP < PLAYER_MAX_HP * 0.3
+      firePassive,
+      heartOfFlame,
+      desperate
     })
+    // 遗物/被动协同生效时飘字说明加成来源（REQ-FEEL-004）
+    if (hero.element === 'fire' && heartOfFlame) {
+      addFloat('❤️‍🔥 火焰之心：火技能伤害 +30%', 'info')
+    }
+    if (hero.element === 'fire' && firePassive) {
+      addFloat('🐉 炎龙骑士支援：火技能伤害 +15%', 'info')
+    }
+    if (desperate) {
+      addFloat('⚔️ 绝境反击：全部伤害 +50%', 'info')
+    }
     if (dmg > 0) await dealDamageToEnemy(dmg, 'skill')
     if (skill.heal) healPlayer(skill.heal)
     if (skill.shield) gainShield(skill.shield)
@@ -428,6 +443,10 @@ export const useGameStore = defineStore('game', () => {
       board.swap(a, b) // 回弹
       audio.play('invalid')
       await sleep(ANIM.swap)
+      // 教学关 1-1：无效交换后恢复高亮提示（REQ-TUTO-002）
+      if (battle.level?.tutorial === 'match') {
+        battle.hint = board.findValidSwap()
+      }
       battle.canInteract = true
       return
     }

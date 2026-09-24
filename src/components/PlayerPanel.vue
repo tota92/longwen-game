@@ -33,12 +33,13 @@ const leaderElement = computed(() => ELEMENT_INFO[leader.value.element])
           >{{ h.icon }}</span>
         </span>
       </div>
+      <!-- 护盾值显示在 HP 条上方（REQ-HERO-103） -->
+      <div v-if="store.battle.playerShield > 0" class="shield-badge">
+        🛡 护盾 {{ store.battle.playerShield }}
+      </div>
       <div class="hp-bar">
         <div class="hp-fill" :style="{ width: `${(store.battle.playerHP / PLAYER_MAX_HP) * 100}%` }"></div>
-        <span class="hp-text">
-          {{ store.battle.playerHP }}/{{ PLAYER_MAX_HP }}
-          <span v-if="store.battle.playerShield > 0" class="shield-text">🛡{{ store.battle.playerShield }}</span>
-        </span>
+        <span class="hp-text">{{ store.battle.playerHP }}/{{ PLAYER_MAX_HP }}</span>
       </div>
     </div>
 
@@ -126,9 +127,24 @@ const leaderElement = computed(() => ELEMENT_INFO[leader.value.element])
   color: #fff;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 }
-.shield-text { color: #9fd8ff; margin-left: 4px; }
 
-/* 护盾值显示在 HP 条上方（REQ-HERO-103） */
+/* 护盾徽章：HP 条上方（REQ-HERO-103） */
+.shield-badge {
+  display: inline-block;
+  margin-top: 3px;
+  font-size: 10px;
+  color: #9fd8ff;
+  background: rgba(60, 167, 255, 0.12);
+  border: 1px solid rgba(60, 167, 255, 0.4);
+  border-radius: 8px;
+  padding: 1px 8px;
+  animation: shield-in 0.3s ease;
+}
+@keyframes shield-in {
+  from { scale: 0.6; opacity: 0; }
+  to { scale: 1; opacity: 1; }
+}
+
 .player-info { position: relative; }
 
 .relic-bar {

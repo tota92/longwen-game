@@ -96,13 +96,13 @@ export class GameBoard {
 
   /** 假设将 (r,c) 置为 el，是否与已有格子形成立即三消（仅用于生成期） */
   private createsImmediateMatch(row: (Cell | null)[], r: number, c: number, el: Cell['element']): boolean {
-    // 横向：左边两个
+    // 横向：左边两个（注意当前行尚未 push 进 grid，须查局部 row）
     if (c >= 2) {
-      const a = this.grid[r]?.[c - 1]
-      const b = this.grid[r]?.[c - 2]
+      const a = row[c - 1]
+      const b = row[c - 2]
       if (a && b && a.element === el && b.element === el) return true
     }
-    // 纵向：上边两个
+    // 纵向：上边两个（已入 grid）
     if (r >= 2) {
       const a = this.grid[r - 1][c]
       const b = this.grid[r - 2][c]
@@ -462,8 +462,26 @@ export class GameBoard {
   }
 
   /**
+   * 贪婪修复：随机改写匹配组内宝石元素以消除所有现成匹配（收敛式）
+   */
+  private repairMatches(): void {
+    let guard = 0
+    while (guard++ < 32) {
+      const matches = this.findMatches()
+      if (matches.length === 0) return
+      for (const g of matches) {
+        const p = g.cells[Math.floor(Math.random() * g.cells.length)]
+        const cell = this.grid[p.row][p.col]
+        if (!cell) continue
+        const others = ELEMENTS.filter((e) => e !== cell.element)
+        cell.element = others[Math.floor(Math.random() * others.length)]
+      }
+    }
+  }
+
+  /**
    * 洗牌重排（不消耗回合）：重排非冻结宝石位置，
-   * 保证洗后无现成消除且存在有效交换
+   * 通过"随机重排 + 贪婪修复"保证洗后无现成消除且存在有效交换
    */
   shuffle(): void {
     const positions: Pos[] = []
@@ -479,7 +497,7 @@ export class GameBoard {
     }
     if (positions.length < 2) return
 
-    for (let attempt = 0; attempt < 80; attempt++) {
+    for (let attempt = 0; attempt < 100; attempt++) {
       // Fisher-Yates 洗牌
       for (let i = cells.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1))
@@ -488,9 +506,11 @@ export class GameBoard {
       positions.forEach((p, i) => {
         this.grid[p.row][p.col] = cells[i]
       })
+      // 贪婪消除现成匹配
+      this.repairMatches()
       if (this.findMatches().length === 0 && this.hasAnyValidSwap()) return
     }
-    // 兜底：接受最后一次排列（极小概率）
+    // 兜底：接受最后一次排列（理论上不可达，极小概率下接受即时消除）
   }
 
   /** 教学关检测：是否存在交换可形成 n 连（n=4 或 5） */
