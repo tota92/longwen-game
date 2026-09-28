@@ -3,6 +3,7 @@
  * 所有核心数据结构在此集中声明，确保类型安全
  */
 import type { IconId } from '@/config/iconIds'
+import type { SpriteId } from '@/config/spriteIds'
 
 /** 元素类型：火/水/木/光/暗/雷 */
 export type ElementType = 'fire' | 'water' | 'wood' | 'light' | 'dark' | 'thunder'
@@ -78,6 +79,8 @@ export interface HeroConfig {
   passiveDesc: string
   /** 头像图标 ID（256×256 透明 PNG，见 src/utils/icons.ts） */
   iconId: IconId
+  /** 战斗展示区立绘 ID（640px 高透明 PNG，见 src/utils/sprites.ts） */
+  spriteId: SpriteId
   /** 四消技能图标 ID */
   skill4IconId: IconId
   /** 五消技能图标 ID */
@@ -177,6 +180,8 @@ export interface EnemyConfig {
   desc: string
   /** 头像图标 ID */
   iconId: IconId
+  /** 战斗展示区立绘 ID */
+  spriteId: SpriteId
 }
 
 /** 遗物配置（REQ-RELIC） */
@@ -248,6 +253,8 @@ export interface EnemyState {
   display: string
   /** 头像图标 ID（中断恢复时按 configId 重新派生，避免旧存档残留失效值） */
   iconId: IconId
+  /** 战斗展示区立绘 ID（同样按 configId 重新派生） */
+  spriteId: SpriteId
   /** 变体主题色（无变体为 null） */
   tint: string | null
   phase: number
@@ -283,6 +290,43 @@ export interface FloatText {
   y: number
   text: string
   kind: 'damage' | 'heal' | 'skill' | 'crit' | 'info'
+}
+
+/**
+ * 角色动作状态（驱动战斗展示区的立绘动画）
+ * idle 待机呼吸 / attack 出手前冲 / hurt 受击后仰 / dead 倒地消散
+ */
+export type ActorAction = 'idle' | 'attack' | 'hurt' | 'dead'
+
+/** 命中特效类型（战斗展示区的攻击反馈元素） */
+export type HitFxKind =
+  /** 普攻斩击弧光 */
+  | 'slash'
+  /** 技能释放光柱 */
+  | 'skill'
+  /** 元素命中爆点 */
+  | 'impact'
+  /** 治疗光辉 */
+  | 'heal'
+
+/** 战斗展示区的命中特效实例 */
+export interface HitFx {
+  id: number
+  kind: HitFxKind
+  /** 出手阵营：hero = 英雄出手，特效落在怪物身上；enemy 反之 */
+  side: 'hero' | 'enemy'
+  /** 特效主题色（取英雄/敌人的元素色） */
+  color: string
+}
+
+/** 宝石展示区：单个元素宝石的本局统计 */
+export interface GemStat {
+  /** 本局累计消除数量 */
+  cleared: number
+  /** 熟练度等级（1~5，由累计消除量分级，见 GEM_LEVEL_THRESHOLDS） */
+  level: number
+  /** 当前等级内的进度（0~1），用于绘制升级进度条 */
+  progress: number
 }
 
 /** 技能特写展示 */

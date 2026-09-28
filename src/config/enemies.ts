@@ -22,7 +22,8 @@ export const ENEMIES: EnemyConfig[] = [
     attack: 8,
     skill: { type: 'none' },
     desc: '最基础的魔物，没有特殊技能',
-    iconId: 'enemy_slime'
+    iconId: 'enemy_slime',
+    spriteId: 'enemy_slime'
   },
   {
     id: 'enemy_fire_lizard',
@@ -32,7 +33,8 @@ export const ENEMIES: EnemyConfig[] = [
     attack: 6,
     skill: { type: 'none' },
     desc: '行动迅捷的爬虫，倒计时极短',
-    iconId: 'enemy_fire_lizard'
+    iconId: 'enemy_fire_lizard',
+    spriteId: 'enemy_fire_lizard'
   },
   {
     id: 'enemy_frost_ghost',
@@ -42,7 +44,8 @@ export const ENEMIES: EnemyConfig[] = [
     attack: 8,
     skill: { type: 'freezeBoard', size: 2, turns: 2 },
     desc: '行动时冻结棋盘 2×2 区域，被冻宝石无法交换与消除',
-    iconId: 'enemy_frost_ghost'
+    iconId: 'enemy_frost_ghost',
+    spriteId: 'enemy_frost_ghost'
   },
   {
     id: 'enemy_dragon_whelp',
@@ -68,7 +71,8 @@ export const ENEMIES: EnemyConfig[] = [
     ],
     skill: { type: 'none' },
     desc: '远古巨龙的幼体，两阶段战斗的教学演示；会蓄力吐息，抢输出可打断',
-    iconId: 'enemy_dragon_whelp'
+    iconId: 'enemy_dragon_whelp',
+    spriteId: 'enemy_dragon_whelp'
   },
   {
     id: 'enemy_ancient_dragon',
@@ -111,7 +115,8 @@ export const ENEMIES: EnemyConfig[] = [
     ],
     skill: { type: 'none' },
     desc: '第一章节 Boss。每阶段以蓄力大招开局：抢输出打断它，否则吃满伤害',
-    iconId: 'enemy_ancient_dragon'
+    iconId: 'enemy_ancient_dragon',
+    spriteId: 'enemy_ancient_dragon'
   }
 ]
 

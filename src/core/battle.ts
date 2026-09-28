@@ -109,6 +109,7 @@ export function createEnemyState(
     configId: config.id,
     display: (variant ? variant.namePrefix + '·' : '') + config.name,
     iconId: config.iconId,
+    spriteId: config.spriteId,
     tint: variant?.tint ?? null,
     phase: 1,
     hp: phaseHP[0],

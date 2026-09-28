@@ -25,6 +25,7 @@ import {
 import {
   ANIM,
   DDA_FAIL_TIMES,
+  ELEMENT_INFO,
   GEM_FROZEN_TURNS,
   MAX_RELICS,
   PLAYER_MAX_HP,
@@ -35,13 +36,17 @@ import { getLevel } from '@/config/levels'
 import { getEnemy } from '@/config/enemies'
 import { getRelic, RELICS } from '@/config/relics'
 import { getHero, HEROES } from '@/config/heroes'
+import { buildGemEntries, createGemStats } from '@/core/gems'
 import type {
+  ActorAction,
   CutIn,
   DotEffect,
   ElementType,
   EnemyState,
   FloatText,
   Grid,
+  HitFx,
+  HitFxKind,
   LevelConfig,
   MatchGroup,
   Pos,
@@ -52,6 +57,7 @@ import type {
 import { loadSave, writeSave } from '@/utils/storage'
 import { audio } from '@/utils/audio'
 import { preloadBoardIcons } from '@/utils/icons'
+import { preloadSprites } from '@/utils/sprites'
 import { sampleN, sleep } from '@/utils/anim'
 import type { IconId } from '@/config/iconIds'
 
@@ -88,6 +94,17 @@ interface BattleRuntime {
   guideDismissed: boolean
   /** 洗牌动画标记 */
   shuffling: boolean
+  /* ---------------- 战斗展示区 / 宝石区 / 技能区（REQ-UI） ---------------- */
+  /** 本局各元素宝石的累计消除量（宝石展示区数据源，不入快照） */
+  gemStats: Record<ElementType, number>
+  /** 英雄动作状态：驱动展示区立绘动画 */
+  heroAction: ActorAction
+  /** 怪物动作状态：驱动展示区立绘动画 */
+  enemyAction: ActorAction
+  /** 底部信息面板当前 Tab */
+  bottomTab: 'gem' | 'skill'
+  /** 宝石展示区聚焦的元素：高亮棋盘上同元素宝石（辅助规划，不消耗回合） */
+  focusElement: ElementType | null
 }
 
 export const useGameStore = defineStore('game', () => {
@@ -121,11 +138,19 @@ export const useGameStore = defineStore('game', () => {
     tutorialProgress: 0,
     hint: null,
     guideDismissed: false,
-    shuffling: false
+    shuffling: false,
+    gemStats: createGemStats(),
+    heroAction: 'idle',
+    enemyAction: 'idle',
+    bottomTab: 'gem',
+    focusElement: null
   })
 
   // UI 瞬态
   const floatTexts = ref<FloatText[]>([])
+  /** 战斗展示区命中特效（斩击/技能光柱/元素爆点/治疗光辉） */
+  const hitFxs = ref<HitFx[]>([])
+  let fxUid = 1
   const cutIn = ref<CutIn | null>(null)
   const shakeScreen = ref(0)
   const flashWhite = ref(0)
@@ -156,6 +181,29 @@ export const useGameStore = defineStore('game', () => {
   })
 
   const hasRelic = (id: string) => battle.relics.includes(id)
+
+  /** 宝石展示区条目（6 元素 + 熟练度等级/进度），由本局消除量实时推导 */
+  const gemEntries = computed(() => buildGemEntries(battle.gemStats))
+
+  /** 技能信息区上下文：遗物 / 支援被动 / 低血（绝境反击条件） */
+  const skillContext = computed(() => ({
+    relics: [...battle.relics],
+    firePassive: supports.value.some((h) => h.passiveId === 'fireSkillUp'),
+    lowHP: battle.playerHP > 0 && battle.playerHP < PLAYER_MAX_HP * 0.3
+  }))
+
+  /** 棋盘上某元素的可交互宝石数量（宝石区"使用"时的反馈文案） */
+  function countElementOnBoard(el: ElementType): number {
+    const grid = battle.board?.grid
+    if (!grid) return 0
+    let n = 0
+    for (const row of grid) {
+      for (const cell of row) {
+        if (cell && cell.element === el) n++
+      }
+    }
+    return n
+  }
 
   /** 战斗引导文案（REQ-TUTORIAL：非弹窗式引导） */
   const guideText = computed<string | null>(() => {
@@ -285,10 +333,11 @@ export const useGameStore = defineStore('game', () => {
     // x 轴轻微抖动：避免同回合多条飘字完全重叠（连击/技能/状态同时出现时）
     const ft: FloatText = {
       id: uid++,
-      x: 50 + Math.round((Math.random() - 0.5) * 26),
-      // 飘字贴着自己的阵营显示：伤害/技能落在敌方区、治疗落在己方区，
+      // 飘字贴着自己的阵营显示，锚定到顶部战斗展示区：
+      // 伤害/技能落在怪物立绘一侧（右），治疗/护盾落在英雄立绘一侧（左），
       // 不再压在棋盘格子上（REQ-DAMAGE-006：飘字不遮挡棋盘操作区域）
-      y: kind === 'heal' ? 88 : 13,
+      x: (kind === 'heal' ? 26 : 74) + Math.round((Math.random() - 0.5) * 12),
+      y: 7 + Math.round(Math.random() * 5),
       text,
       kind
     }
@@ -321,6 +370,87 @@ export const useGameStore = defineStore('game', () => {
   }
 
   // ================================================================
+  // 战斗展示区：角色动作状态机与命中特效（REQ-UI 战斗反馈元素）
+  // ================================================================
+
+  /** 各阵营动作状态的自动回退定时器 */
+  const actionTimers: Record<'hero' | 'enemy', number> = { hero: 0, enemy: 0 }
+
+  /**
+   * 切换角色动作状态，播放完毕后自动回到 idle。
+   * idle 与 dead 不设回退：idle 是默认态，dead 是终态（由 startLevel / spawnWave 重置）。
+   */
+  function setActorAction(side: 'hero' | 'enemy', action: ActorAction): void {
+    const apply = (a: ActorAction): void => {
+      if (side === 'hero') battle.heroAction = a
+      else battle.enemyAction = a
+    }
+    apply(action)
+    clearTimeout(actionTimers[side])
+    if (action === 'idle' || action === 'dead') return
+    const dur = action === 'attack' ? ANIM.actorAttack : ANIM.actorHurt
+    actionTimers[side] = window.setTimeout(() => {
+      const current = side === 'hero' ? battle.heroAction : battle.enemyAction
+      if (current === action) apply('idle')
+    }, dur)
+  }
+
+  /** 重置双方动作状态与特效（开局 / 换波 / 中断恢复） */
+  function resetActorActions(): void {
+    clearTimeout(actionTimers.hero)
+    clearTimeout(actionTimers.enemy)
+    battle.heroAction = 'idle'
+    battle.enemyAction = 'idle'
+    hitFxs.value = []
+  }
+
+  /** 生成一次命中特效（side = 出手方，特效落在其对面角色身上） */
+  function spawnHitFx(kind: HitFxKind, side: 'hero' | 'enemy', color: string): void {
+    const fx: HitFx = { id: fxUid++, kind, side, color }
+    hitFxs.value.push(fx)
+    window.setTimeout(() => {
+      hitFxs.value = hitFxs.value.filter((f) => f.id !== fx.id)
+    }, ANIM.hitFx)
+  }
+
+  /** 敌人主题色：优先取变体色，否则按敌人 ID 取元素近似色 */
+  function enemyColor(): string {
+    const e = battle.enemy
+    if (!e) return '#ff5a3c'
+    if (e.tint) return e.tint
+    const map: Record<string, string> = {
+      enemy_slime: '#4cd964',
+      enemy_fire_lizard: '#ff5a3c',
+      enemy_frost_ghost: '#3ca7ff',
+      enemy_dragon_whelp: '#a06bff',
+      enemy_ancient_dragon: '#ff5a3c'
+    }
+    return map[e.configId] ?? '#ff5a3c'
+  }
+
+  /** 宝石展示区：聚焦/取消聚焦某元素（高亮棋盘，辅助规划，不消耗回合） */
+  function toggleGemFocus(el: ElementType): void {
+    if (battle.focusElement === el) {
+      battle.focusElement = null
+      return
+    }
+    battle.focusElement = el
+    audio.play('select')
+    const n = countElementOnBoard(el)
+    showTip(
+      n > 0
+        ? `已高亮棋盘上的${ELEMENT_INFO[el].name}元素宝石（${n} 颗）`
+        : `棋盘上暂时没有${ELEMENT_INFO[el].name}元素宝石`
+    )
+  }
+
+  /** 切换底部信息面板 Tab（宝石 / 技能） */
+  function setBottomTab(tab: 'gem' | 'skill'): void {
+    battle.bottomTab = tab
+    audio.play('select')
+  }
+
+  // ================================================================
   // 战斗生命周期
   // ================================================================
 
@@ -349,6 +479,10 @@ export const useGameStore = defineStore('game', () => {
     battle.tutorialProgress = 0
     battle.guideDismissed = false
     battle.shuffling = false
+    battle.gemStats = createGemStats()
+    battle.focusElement = null
+    battle.bottomTab = 'gem'
+    resetActorActions()
     floatTexts.value = []
     clearTimeout(tipTimer)
     tip.value = null
@@ -387,6 +521,8 @@ export const useGameStore = defineStore('game', () => {
     battle.enemy = createEnemyState(wave, { enemyCdUp })
     battle.waveIndex = index
     battle.combo = 0
+    // 新敌人入场：清掉上一波的受击/死亡姿态与残留特效
+    resetActorActions()
   }
 
   /** 中断恢复（REQ-BATTLE-006 / REQ-SAVE-002） */
@@ -416,6 +552,10 @@ export const useGameStore = defineStore('game', () => {
     battle.hint = level.tutorial === 'match' ? battle.board.findValidSwap() : null
     battle.guideDismissed = false
     battle.shuffling = false
+    battle.gemStats = createGemStats()
+    battle.focusElement = null
+    battle.bottomTab = 'gem'
+    resetActorActions()
     floatTexts.value = []
     clearTimeout(tipTimer)
     tip.value = null
@@ -438,13 +578,25 @@ export const useGameStore = defineStore('game', () => {
   // 伤害 / 治疗结算
   // ================================================================
 
-  /** 玩家对敌人造成伤害（含 Boss 阶段转换，REQ-ENEMY-003；蓄力打断见 5.4） */
-  async function dealDamageToEnemy(dmg: number, kind: FloatText['kind']): Promise<void> {
+  /**
+   * 玩家对敌人造成伤害（含 Boss 阶段转换，REQ-ENEMY-003；蓄力打断见 5.4）
+   * @param source 'hero' = 英雄主动出手（切攻击态 + 命中特效）；'dot' = 灼烧/中毒等持续伤害
+   *               （只有怪物受击反馈，英雄不做出手动作）
+   */
+  async function dealDamageToEnemy(
+    dmg: number,
+    kind: FloatText['kind'],
+    source: 'hero' | 'dot' = 'hero'
+  ): Promise<void> {
     const enemy = battle.enemy
     if (!enemy || dmg <= 0) return
     enemy.hp -= dmg
     battle.totalDamage += dmg
     addFloat(`-${dmg}`, kind)
+    // 战斗展示区反馈：命中特效落在挨打的一方身上（side = 出手方，组件内部会取反）
+    if (source === 'hero') setActorAction('hero', 'attack')
+    setActorAction('enemy', 'hurt')
+    spawnHitFx(source === 'hero' && kind === 'skill' ? 'skill' : 'slash', 'hero', enemyColor())
     audio.play(kind === 'skill' ? 'skill' : 'combo', Math.min(battle.combo, 8))
 
     // 蓄力打断：蓄力期间累计承受伤害达到阈值即打断（Boss 蓄力失败并吃反噬）
@@ -467,6 +619,9 @@ export const useGameStore = defineStore('game', () => {
         damagePlayer(enemy.phaseBlastDamage)
       }
     }
+
+    // 彻底死亡：立绘切到倒地消散姿态（阶段转换后才会走到这里）
+    if (enemyDead(enemy)) setActorAction('enemy', 'dead')
   }
 
   /**
@@ -546,6 +701,10 @@ export const useGameStore = defineStore('game', () => {
       addFloat(`-${rest}`, 'damage')
       doShake()
       audio.play('hit')
+      // 战斗展示区反馈：怪物出手，英雄受击
+      setActorAction('enemy', 'attack')
+      setActorAction('hero', 'hurt')
+      spawnHitFx('impact', 'enemy', enemyColor())
     }
   }
 
@@ -556,12 +715,14 @@ export const useGameStore = defineStore('game', () => {
     if (healed > 0) {
       addFloat(`+${healed}${reason ? ` (${reason})` : ''}`, 'heal')
       audio.play('heal')
+      spawnHitFx('heal', 'hero', '#7dedb2')
     }
   }
 
   function gainShield(amount: number): void {
     battle.playerShield += amount
     addFloat(`护盾 +${amount}`, 'info')
+    spawnHitFx('heal', 'hero', '#68d8ff')
   }
 
   /** 释放主战英雄技能（技能石触发，REQ-HERO-002） */
@@ -577,6 +738,8 @@ export const useGameStore = defineStore('game', () => {
       hero.color
     )
     audio.play('skill')
+    // 纯辅助技能（只回血/加盾）不经过 dealDamageToEnemy，这里统一给出"英雄施法"姿态
+    setActorAction('hero', 'attack')
     await sleep(150) // 让特写先入场
 
     const firePassive = supports.value.some((h) => h.passiveId === 'fireSkillUp')
@@ -721,6 +884,8 @@ export const useGameStore = defineStore('game', () => {
       // 宝石伤害：仅普通宝石计数（技能石走技能结算）
       const gems = cleared.filter((c) => !c.special)
       if (gems.length > 0) {
+        // 宝石展示区：累计本局各元素消除量（熟练度等级的数据源）
+        for (const g of gems) battle.gemStats[g.element]++
         const dmg = calcWaveDamage(
           gems,
           battle.combo,
@@ -852,12 +1017,12 @@ export const useGameStore = defineStore('game', () => {
     const enemy = battle.enemy!
     // DOT：燃烧/中毒在敌人行动阶段结算（REQ-HERO-101）
     if (enemy.burn) {
-      await dealDamageToEnemy(enemy.burn.damage, 'damage')
+      await dealDamageToEnemy(enemy.burn.damage, 'damage', 'dot')
       enemy.burn.turns--
       if (enemy.burn.turns <= 0) enemy.burn = null
     }
     if (enemy.poison) {
-      await dealDamageToEnemy(enemy.poison.damage, 'damage')
+      await dealDamageToEnemy(enemy.poison.damage, 'damage', 'dot')
       enemy.poison.turns--
       if (enemy.poison.turns <= 0) enemy.poison = null
     }
@@ -1095,6 +1260,7 @@ export const useGameStore = defineStore('game', () => {
     profile,
     battle,
     floatTexts,
+    hitFxs,
     cutIn,
     shakeScreen,
     flashWhite,
@@ -1109,6 +1275,8 @@ export const useGameStore = defineStore('game', () => {
     guideText,
     activeTip,
     hasHiddenGuide,
+    gemEntries,
+    skillContext,
     // 动作
     setScreen,
     startLevel,
@@ -1124,6 +1292,8 @@ export const useGameStore = defineStore('game', () => {
     dismissTip,
     reopenTip,
     showTip,
+    toggleGemFocus,
+    setBottomTab,
     saveSnapshot
   }
 })

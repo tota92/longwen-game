@@ -70,16 +70,10 @@ const store = useGameStore()
 }
 
 /* ============================================================
- * 宽屏（≥860px）：信息栏在右列，飘字跟随自己的面板走，
- * 不再落在左列的棋盘上（与 BattleView 的双栏布局对齐）
+ * 飘字锚点由 store.addFloat 给出（x/y 百分比）：
+ * 伤害/技能落在右侧怪物立绘上方，治疗/护盾落在左侧英雄立绘上方。
+ * 宽屏下战斗展示区同样位于顶部横跨整宽，因此无需额外覆盖。
  * ============================================================ */
-@media (min-width: 860px) {
-  .float-text { left: 78%; }
-  .ft-damage,
-  .ft-crit,
-  .ft-skill { top: 24%; }
-  .ft-heal { top: 74%; }
-}
 
 .ft-damage { color: #ffb199; font-size: 18px; }
 .ft-crit { color: #ff7a59; font-size: 26px; }
@@ -88,11 +82,11 @@ const store = useGameStore()
 /* 兜底：info 类文案现已统一改走提示区（TipBar），此处保留以防未来有代码直接推入 info 飘字 */
 .ft-info { color: #cfe0ff; font-size: 13px; font-weight: 500; }
 
-/* 连击展示（屏幕中央偏上） */
+/* 连击展示（战斗展示区下方、棋盘上方） */
 .combo-display {
   position: absolute;
   left: 50%;
-  top: 30%;
+  top: 26%;
   transform: translate(-50%, -50%);
   color: var(--gold-light);
   font-family: 'STKaiti', 'KaiTi', serif;

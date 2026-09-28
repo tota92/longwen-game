@@ -2,18 +2,21 @@
 /**
  * 战斗界面（REQ-UI 9.2 布局）
  *
- * UI 层次（关键战斗信息优先，游玩区最大化）：
- *   顶部  暂停 + 关卡名 + 回合数        —— 窄条，不抢占游玩区
- *   敌方  头像 / 血条 / 倒计时 / 意图 / 教程提示 —— 单一信息簇
- *   中部  8×8 棋盘                      —— 游玩区，占满可用宽度与剩余高度
- *   我方  英雄 / 血条护盾 / 元素加成 / 遗物 —— 单一信息簇
- * 窄屏单列纵向堆叠；宽屏（≥860px）转为「棋盘左 / 信息右」双栏
+ * UI 层次（自上而下）：
+ *   顶部    暂停 + 关卡名 + 回合数        —— 窄条，不抢占游玩区
+ *   展示区  英雄 vs 怪物：立绘 / 动作 / 特效 / 血条 —— 战斗反馈的舞台
+ *   中部    8×8 棋盘                      —— 游玩区，占满剩余高度
+ *   信息区  宝石 / 技能 双 Tab 面板        —— 局内态势与技能可用状态
+ *
+ * 窄屏（<860px）单列纵向堆叠，信息区收成底部双 Tab，棋盘不被压缩；
+ * 宽屏（≥860px）转为「左：展示区+棋盘 / 右：信息区常驻」双栏。
  */
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useGameStore } from '@/stores/game'
 import BoardGrid from '@/components/BoardGrid.vue'
-import EnemyPanel from '@/components/EnemyPanel.vue'
-import PlayerPanel from '@/components/PlayerPanel.vue'
+import BattleStage from '@/components/BattleStage.vue'
+import GemPanel from '@/components/GemPanel.vue'
+import SkillPanel from '@/components/SkillPanel.vue'
 import FloatLayer from '@/components/FloatLayer.vue'
 import SkillCutIn from '@/components/SkillCutIn.vue'
 import RelicSelect from '@/components/RelicSelect.vue'
@@ -25,13 +28,34 @@ import { iconUrl } from '@/utils/icons'
 const store = useGameStore()
 const battle = store.battle
 
-/** 界面图标：暂停 */
-const pauseIcon = iconUrl('ui_pause')
+/** 界面图标 */
+const ICON = {
+  pause: iconUrl('ui_pause'),
+  gem: iconUrl('el_light'),
+  skill: iconUrl('ov_ultimate')
+} as const
 
 const waveText = computed(() => {
   if (!battle.level || battle.level.waves.length <= 1) return null
   return `第 ${battle.waveIndex + 1}/${battle.level.waves.length} 波`
 })
+
+/**
+ * 宽屏断点（与样式里的 860px 保持一致）。
+ * 宽屏时信息区不再收成底部 Tab，而是常驻右侧栏——
+ * 用 v-if 而非双份 DOM，避免 GemPanel/SkillPanel 被重复挂载。
+ */
+const isWide = ref(false)
+let mq: MediaQueryList | null = null
+function onMqChange(e: MediaQueryList | MediaQueryListEvent): void {
+  isWide.value = e.matches
+}
+onMounted(() => {
+  mq = window.matchMedia('(min-width: 860px)')
+  isWide.value = mq.matches
+  mq.addEventListener('change', onMqChange)
+})
+onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
 </script>
 
 <template>
@@ -39,7 +63,7 @@ const waveText = computed(() => {
     <!-- 顶部条：暂停 + 关卡信息（窄条，不占用游玩区） -->
     <div class="battle-top">
       <button class="pause-btn" @click="battle.paused = true" aria-label="暂停">
-        <img :src="pauseIcon" alt="" aria-hidden="true" draggable="false" />
+        <img :src="ICON.pause" alt="" aria-hidden="true" draggable="false" />
       </button>
       <div class="level-info">
         <span class="level-name font-title">{{ battle.level?.name }}</span>
@@ -48,10 +72,10 @@ const waveText = computed(() => {
       <div class="turn-text num">回合 {{ battle.turnCount }}</div>
     </div>
 
-    <!-- 敌方区 -->
-    <EnemyPanel />
+    <!-- 战斗展示区：英雄 vs 怪物 -->
+    <BattleStage />
 
-    <!-- 棋盘：战斗界面的游玩区，占满可用宽度与剩余高度 -->
+    <!-- 棋盘：战斗界面的游玩区 -->
     <div class="board-wrap" :class="{ shuffling: battle.shuffling }">
       <BoardGrid
         v-if="battle.board"
@@ -59,15 +83,55 @@ const waveText = computed(() => {
         :board="battle.board"
         :can-interact="battle.canInteract && !battle.paused && battle.phase === 'fighting'"
         :hint="battle.hint"
+        :focus-element="battle.focusElement"
         @swap="(a, b) => store.doSwap(a, b)"
         @tap-special="(p) => store.tapSpecial(p)"
       />
-      <!-- 提示区：绝对定位于棋盘区底部、不参与文档流，提示的出现/消失不会改变棋盘尺寸 -->
+      <!-- 提示区：绝对定位于棋盘区底部、不参与文档流 -->
       <TipBar />
     </div>
 
-    <!-- 我方区：主战增益与遗物名称内联在面板内（原独立增益条信息重复，已合并） -->
-    <PlayerPanel />
+    <!-- 信息区（窄屏）：宝石 / 技能 双 Tab -->
+    <div v-if="!isWide" class="bottom-panel panel">
+      <div class="tab-bar" role="tablist">
+        <button
+          class="tab-btn"
+          role="tab"
+          :aria-selected="battle.bottomTab === 'gem'"
+          :class="{ active: battle.bottomTab === 'gem' }"
+          @click="store.setBottomTab('gem')"
+        >
+          <img :src="ICON.gem" alt="" aria-hidden="true" draggable="false" />
+          <span>宝石</span>
+        </button>
+        <button
+          class="tab-btn"
+          role="tab"
+          :aria-selected="battle.bottomTab === 'skill'"
+          :class="{ active: battle.bottomTab === 'skill' }"
+          @click="store.setBottomTab('skill')"
+        >
+          <img :src="ICON.skill" alt="" aria-hidden="true" draggable="false" />
+          <span>技能</span>
+        </button>
+      </div>
+      <div class="tab-content">
+        <GemPanel v-show="battle.bottomTab === 'gem'" />
+        <SkillPanel v-show="battle.bottomTab === 'skill'" />
+      </div>
+    </div>
+
+    <!-- 信息区（宽屏）：右侧常驻，宝石与技能同时可见 -->
+    <aside v-else class="side-panels">
+      <section class="side-block panel">
+        <h3 class="block-title font-title">宝石图鉴</h3>
+        <GemPanel />
+      </section>
+      <section class="side-block panel">
+        <h3 class="block-title font-title">英雄技能</h3>
+        <SkillPanel />
+      </section>
+    </aside>
 
     <!-- 浮层 -->
     <FloatLayer />
@@ -94,6 +158,14 @@ const waveText = computed(() => {
   padding-bottom: env(safe-area-inset-bottom);
   /* 面板与棋盘之间的呼吸由 gap 统一控制，避免各处 margin 叠加出垂直死角 */
   gap: var(--sp-3);
+  /* 128px = Tab 栏 25 + 技能页内容 86（3 个英雄切换钮纵排是最高的）+ 内边距与间距 17。
+     这是技能页不被裁切的下限，两页取同一值，切 Tab 时棋盘尺寸才不会变。
+     矮屏实测只差 3px 棋盘，不值得为它牺牲技能页完整性。 */
+  --bottom-total: 128px;
+  /* 提示带：TipBar 绝对定位在棋盘区底部，必须在这里预留高度，
+     否则棋盘下方留白不足时提示条会压住最后一行宝石（宽屏棋盘受高度限制时尤其明显）。
+     预留而非动态让位，是为了提示出现/消失时棋盘不跳动。 */
+  --tip-h: 58px;
 }
 
 .battle-top {
@@ -145,16 +217,21 @@ const waveText = computed(() => {
   color: var(--text-3);
 }
 
-/* 棋盘容器：游玩区，占满可用宽度与剩余高度 */
+/* 棋盘容器：游玩区，占满剩余高度 */
 .board-wrap {
   position: relative;
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0 var(--sp-3);
+  /* 底部预留提示带：棋盘在扣掉提示带后的内容框里居中 */
+  padding: 0 var(--sp-3) var(--tip-h);
   min-height: 0;
-  overflow: hidden; /* 让光晕止步于棋盘区域，不糊到敌人/玩家面板上 */
+  overflow: hidden; /* 让光晕止步于棋盘区域，不糊到展示区/信息区上 */
+  /* 让棋盘用容器实测高度定尺寸（见下方 100cqh），
+     而不是拿 100dvh 去减一串魔法常数——安全区、地址栏收起、横屏都会改变可用高度，
+     减法公式必然对不准，最后表现为棋盘溢出被裁 */
+  container-type: size;
 }
 /* 棋盘光晕：填补竖屏上下留白，让棋盘像"悬浮在法阵上" */
 .board-wrap::before {
@@ -173,10 +250,15 @@ const waveText = computed(() => {
   );
   pointer-events: none;
 }
-/* 棋盘边长 = 可用宽度（上限 94vw）与可用高度的较小值，保证在竖屏上尽可能大 */
+/*
+ * 棋盘边长 = min(内容框宽, 内容框高)。
+ * 100cqh 取的是 .board-wrap 内容框的实测高度（已扣掉提示带 padding），
+ * 因此安全区、地址栏收放、横屏切换都能自动适应，不再依赖任何魔法常数。
+ * 94vw 上限保证竖屏左右留出边距，棋盘不贴屏幕边。
+ */
 .board-wrap :deep(.board) {
   position: relative;
-  width: min(100%, 94vw, 58dvh);
+  width: min(100%, 94vw, 100cqh);
 }
 .board-wrap.shuffling {
   animation: shuffle-anim 0.45s ease-in-out infinite;
@@ -188,20 +270,89 @@ const waveText = computed(() => {
 }
 
 /* ============================================================
- * 宽屏（≥860px）：棋盘左 / 信息右 双栏
- * 游玩区保持方形且不受面板挤压，信息按"敌方在上、我方在下"纵向排列
+ * 信息区（窄屏）：底部双 Tab
+ * 高度固定，保证切换 Tab 时棋盘尺寸不变
+ * ============================================================ */
+.bottom-panel {
+  flex-shrink: 0;
+  height: var(--bottom-total);
+  margin: 0 var(--sp-4) var(--sp-4);
+  padding: var(--sp-1) var(--sp-2) var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 100%, rgba(120, 60, 200, 0.12), transparent 60%),
+    var(--bg-panel);
+}
+
+.tab-bar {
+  display: flex;
+  gap: var(--sp-1);
+  flex-shrink: 0;
+}
+.tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 4px 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-3);
+  font-size: 11px;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: color var(--dur-fast), background var(--dur-fast), border-color var(--dur-fast);
+}
+.tab-btn img {
+  width: 15px;
+  height: 15px;
+  object-fit: contain;
+  opacity: 0.65;
+  transition: opacity var(--dur-fast), filter var(--dur-fast);
+}
+/* 选中态：金色描边 + 图标点亮，与全站魔幻纹章语言一致 */
+.tab-btn.active {
+  color: var(--gold-light);
+  border-color: var(--border-gold-strong);
+  background: rgba(212, 175, 55, 0.12);
+}
+.tab-btn.active img {
+  opacity: 1;
+  filter: drop-shadow(0 0 5px rgba(240, 216, 120, 0.8));
+}
+.tab-btn:active { transform: scale(0.97); }
+
+.tab-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+}
+.tab-content > * {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
+/* ============================================================
+ * 宽屏（≥860px）：左「展示区 + 棋盘」/ 右「信息区」
+ * 信息区两块常驻，宝石与技能不再互相遮挡
  * ============================================================ */
 @media (min-width: 860px) {
   .battle-view {
     display: grid;
-    /* 左栏游玩区自适应，右栏信息固定宽度区间 */
-    grid-template-columns: minmax(0, 1fr) clamp(340px, 30vw, 400px);
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    /* 顶栏横跨整宽；右栏与棋盘同起止，形成上下框住棋盘的对位 */
+    grid-template-columns: minmax(0, 1fr) clamp(340px, 30vw, 420px);
+    grid-template-rows: auto auto minmax(0, 1fr);
     grid-template-areas:
       'top    top'
-      'board  side-top'
-      'board  side-bottom';
+      'stage  side'
+      'board  side';
     gap: var(--sp-4) var(--sp-6);
     padding: var(--sp-4) var(--sp-6);
     max-width: 1180px;
@@ -211,23 +362,40 @@ const waveText = computed(() => {
     grid-area: top;
     padding: 0;
   }
-  /* 棋盘锁定为正方形并按可用高度收敛，保证两侧信息不挤压游玩区 */
+  .battle-view > .battle-stage {
+    grid-area: stage;
+    margin: 0;
+  }
   .board-wrap {
     grid-area: board;
-    padding: 0;
+    /* 宽屏同样要留提示带，否则提示条会压住棋盘最后一行 */
+    padding: 0 0 var(--tip-h);
   }
-  .board-wrap :deep(.board) {
-    width: min(100%, calc(100dvh - 170px));
+  /* 棋盘尺寸由 .board-wrap 的 100cqh 自动收敛，宽屏无需单独覆盖 */
+
+  .side-panels {
+    grid-area: side;
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-4);
+    min-height: 0;
+    overflow-y: auto;
   }
-  .battle-view > .enemy-panel {
-    grid-area: side-top;
-    align-self: start;
+  .side-block {
+    padding: var(--sp-3) var(--sp-4) var(--sp-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp-3);
+    flex-shrink: 0;
+  }
+  .block-title {
     margin: 0;
-  }
-  .battle-view > .player-panel {
-    grid-area: side-bottom;
-    align-self: end;
-    margin: 0;
+    font-size: 13px;
+    color: var(--gold-light);
+    letter-spacing: 3px;
+    padding-left: 8px;
+    border-left: 2px solid var(--gold);
+    line-height: 1.2;
   }
 }
 </style>

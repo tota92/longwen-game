@@ -79,8 +79,50 @@ export const ANIM = {
   shuffle: 450,
   hitFlash: 300,
   /** 提示区系统提示的停留时长（教程引导常驻，直到手动关闭） */
-  tip: 2600
+  tip: 2600,
+  /** 角色动作状态持续时间：播完自动回到 idle（战斗展示区） */
+  actorAttack: 400,
+  actorHurt: 320,
+  actorDead: 1500,
+  /** 命中特效驻留时长 */
+  hitFx: 520
 }
 
 /** 数值换算锚点（REQ-DAMAGE）：1 回合标准输出 = 10 伤害 */
 export const DAMAGE_ANCHOR = 10
+
+/* ============================================================
+ * 宝石展示区（REQ-UI 宝石系统展示）
+ * ============================================================ */
+
+/**
+ * 宝石熟练度等级阈值：本局累计消除该元素宝石的数量达到阈值即升 1 级。
+ *
+ * 定位说明：这是**展示层分级**，用于让玩家一眼看出"这局我主要靠哪个元素输出"，
+ * 不参与伤害结算——数值锚点（REQ-DAMAGE：1 回合标准输出 = 10 伤害）保持不变。
+ * 阈值按一局 15~30 回合、总消除量 80~200 颗标定：
+ * 主力元素通常到 4~5 级，冷门元素停在 1~2 级，形成可读的区分度。
+ */
+export const GEM_LEVEL_THRESHOLDS = [0, 6, 14, 26, 42] as const
+
+/** 宝石熟练度等级上限 */
+export const GEM_LEVEL_MAX = GEM_LEVEL_THRESHOLDS.length
+
+/* ============================================================
+ * 技能信息区（REQ-UI 信息展示区域）
+ * ============================================================ */
+
+/**
+ * 技能等级上限：基础 1 级 + 最多 3 个遗物强化。
+ * 技能等级直接映射现有遗物体系（见 src/core/skills.ts），
+ * 不新增独立的技能养成数值，避免与遗物构筑重复计费。
+ */
+export const SKILL_LEVEL_MAX = 1 + MAX_RELICS
+
+/** 技能强化遗物说明（技能信息区的"升级入口"清单） */
+export const SKILL_UPGRADE_RELICS: { id: string; desc: string }[] = [
+  { id: 'relic_heart_of_flame', desc: '火属性技能伤害 +30%' },
+  { id: 'relic_ice_touch', desc: '技能附带的冻结 +1 回合' },
+  { id: 'relic_desperate_counter', desc: '生命低于 30% 时全部伤害 +50%' },
+  { id: 'relic_element_resonance', desc: '四消额外产出技能石概率 +30%' }
+]

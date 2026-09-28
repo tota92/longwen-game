@@ -40,3 +40,6 @@ package-lock.json
 
 # busymingscfe 运行时缓存（勿入版本库）
 .busymingscfe/.runtime/
+
+# 本地预览产物（scripts/preview-build.mjs 生成，供截图验收用）
+.preview/

@@ -31,6 +31,11 @@ const props = defineProps<{
   canInteract: boolean
   /** 教学 1-1 高亮提示的交换对（REQ-TUTO-002） */
   hint?: [Pos, Pos] | null
+  /**
+   * 宝石展示区聚焦的元素：高亮该元素、压暗其余宝石，
+   * 帮玩家快速定位"我要消的颜色在哪"。纯视觉辅助，不影响可操作性。
+   */
+  focusElement?: ElementType | null
 }>()
 
 const emit = defineEmits<{
@@ -244,7 +249,10 @@ const frozenMarkIcon = iconUrl(FROZEN_MARK_ICON)
           'gem-pop': cell.popping,
           'gem-selected': selected && selected.row === cell.row && selected.col === cell.col,
           'gem-hint': isHintCell(cell.row, cell.col),
-          'gem-new': newIds.has(cell.id)
+          'gem-new': newIds.has(cell.id),
+          /* 宝石展示区聚焦：高亮目标元素、压暗其余（技能石不受影响，始终醒目） */
+          'gem-focus': !!props.focusElement && cell.element === props.focusElement,
+          'gem-dim': !!props.focusElement && cell.element !== props.focusElement && !cell.special
         }
       ]"
       :style="{
@@ -440,5 +448,31 @@ const frozenMarkIcon = iconUrl(FROZEN_MARK_ICON)
 .gem-frozen .gem-icon {
   filter: grayscale(0.75) brightness(1.02) saturate(0.45)
     drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 8px rgba(140, 210, 255, 0.85));
+}
+
+/* ============================================================
+ * 宝石展示区聚焦态：把非目标元素压暗，目标元素点亮
+ * 用透明度 + 饱和度做减法，不改变宝石尺寸，避免棋盘"抖动"
+ * ============================================================ */
+.gem-dim .gem-icon {
+  opacity: 0.26;
+  filter: grayscale(0.6) brightness(0.7) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+.gem-dim .gem-mark { opacity: 0.3; }
+
+.gem-focus .gem-icon {
+  animation: gem-focus-pulse 1.5s ease-in-out infinite;
+}
+@keyframes gem-focus-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 5px rgba(var(--gem-glow), 0.85))
+      drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
+    scale: 1;
+  }
+  50% {
+    filter: drop-shadow(0 0 13px rgba(var(--gem-glow), 1)) brightness(1.2)
+      drop-shadow(0 2px 3px rgba(0, 0, 0, 0.5));
+    scale: 1.1;
+  }
 }
 </style>

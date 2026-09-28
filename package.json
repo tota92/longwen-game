@@ -10,6 +10,10 @@
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
     "test": "tsx scripts/smoke-test.ts",
+    "check:build": "node scripts/preview-build.mjs --test",
+    "check:visual": "node scripts/visual-check.mjs",
+    "check:battle": "node scripts/battle-demo.mjs",
+    "preview:build": "node scripts/preview-build.mjs --preview",
     "icons": "tsx scripts/icons/build.ts",
     "icons:inspect": "tsx scripts/icons/inspect.ts"
   },

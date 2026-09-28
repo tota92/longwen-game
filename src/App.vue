@@ -53,10 +53,31 @@ watch(
 
 <template>
   <div class="app-root" :class="{ 'screen-shake': shaking }">
-    <transition name="screen" mode="out-in">
-      <component :is="currentView" :key="store.screen" />
-    </transition>
+    <div class="screen-host">
+      <transition name="screen" mode="out-in">
+        <component :is="currentView" :key="store.screen" />
+      </transition>
+    </div>
     <div class="flash-white" :class="{ active: flashing }"></div>
+
+    <!--
+      横屏守卫：本作按竖屏单手操作设计，手机横屏时可用高度不足以同时容纳
+      展示区 + 棋盘 + 信息区（844×390 下棋盘会被压到几像素），
+      与其展示一个残破的界面，不如明确提示玩家转回竖屏。
+      纯 CSS 媒体查询触发，首帧即生效，不会闪一下再切。
+    -->
+    <div class="rotate-guard" role="alertdialog" aria-label="请竖屏游玩">
+      <div class="rotate-card">
+        <svg class="rotate-icon" viewBox="0 0 48 48" aria-hidden="true">
+          <rect x="17" y="8" width="14" height="24" rx="3" />
+          <path d="M23 11.5h2" />
+          <path d="M11 30a13 13 0 0 0 3.6 8.2" />
+          <path d="M9.4 26.6 11 30l3.6-1.2" />
+        </svg>
+        <p class="rotate-title font-title">请将设备旋转至竖屏</p>
+        <p class="rotate-sub">横屏下棋盘会被压缩到无法操作，竖屏才能获得完整体验</p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -191,6 +212,75 @@ body {
   .screen-shake {
     animation: none !important;
   }
+}
+
+/* 视图挂载层：包一层是为了让横屏守卫能用一条 display:none 关掉全部页面 */
+.screen-host {
+  height: 100%;
+}
+
+/* ============================================================
+ * 横屏守卫
+ * 手机横屏（高度不足 520px）时隐藏游戏本体，只显示旋转提示。
+ * 用 CSS 媒体查询而非 JS 监听：首帧就是正确状态，不会闪。
+ * ============================================================ */
+.rotate-guard {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-6);
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(212, 175, 55, 0.1), transparent 60%),
+    linear-gradient(180deg, var(--bg-raise) 0%, var(--bg-deep) 100%);
+}
+.rotate-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  max-width: 320px;
+  text-align: center;
+}
+.rotate-icon {
+  width: 64px;
+  height: 64px;
+  color: var(--gold-light);
+  animation: rotate-hint 2.4s ease-in-out infinite;
+}
+.rotate-icon rect,
+.rotate-icon path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.rotate-title {
+  margin: 0;
+  font-size: 17px;
+  letter-spacing: 2px;
+  color: var(--gold-light);
+}
+.rotate-sub {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+@keyframes rotate-hint {
+  0%, 45% { rotate: 0deg; }
+  60%, 100% { rotate: -90deg; }
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .screen-host { display: none; }
+  .rotate-guard { display: flex; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rotate-icon { animation: none; }
 }
 
 /* 屏幕震动 */
