@@ -12,7 +12,7 @@
  *   弱化：支援被动与遗物 → 压成小图标，点击才展开说明
  *   移除：元素加成说明 → 已由宝石展示区详情承载，不重复占位
  *
- * 角色形象：public/sprites/ 下的 640px 透明立绘（完整全身像），
+ * 角色形象：public/sprites/heroes|enemies/ 下的 640px 透明立绘（完整全身像），
  * 由 heroAction / enemyAction 两个状态机驱动四态动画：
  *   idle 待机呼吸 → attack 出手前冲 → hurt 受击后仰 → dead 倒地消散
  *

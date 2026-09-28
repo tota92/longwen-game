@@ -1,0 +1,61 @@
+/* ============================================================
+ * 基础样式：全局 reset、根元素、应用容器布局
+ * 引入顺序：tokens.css → base.css → components.css → effects.css → guards.css
+ * ============================================================ */
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg-deep);
+  color: var(--text-1);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  overflow: hidden;
+}
+
+/* 数值一律等宽对齐：HP / 倒计时 / 伤害 / 回合数在跳动时不会左右抖动 */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.app-root {
+  position: relative;
+  height: 100dvh;
+  width: 100vw;
+  max-width: 560px; /* 移动优先：桌面窄栏预览 */
+  margin: 0 auto;
+  background:
+    radial-gradient(ellipse at 50% -10%, rgba(212, 175, 55, 0.12), transparent 55%),
+    radial-gradient(ellipse at 50% 110%, rgba(120, 60, 200, 0.1), transparent 50%),
+    linear-gradient(180deg, var(--bg-raise) 0%, var(--bg-deep) 100%);
+  overflow: hidden;
+}
+
+/* 宽屏（≥860px）：解除窄栏限制，交由各页面自行组织双栏布局 */
+@media (min-width: 860px) {
+  .app-root {
+    max-width: none;
+    background:
+      radial-gradient(ellipse at 22% 0%, rgba(212, 175, 55, 0.13), transparent 46%),
+      radial-gradient(ellipse at 84% 100%, rgba(120, 60, 200, 0.14), transparent 48%),
+      linear-gradient(180deg, var(--bg-raise) 0%, var(--bg-deep) 100%);
+  }
+}
+
+/* 视图挂载层：包一层是为了让横屏守卫能用一条 display:none 关掉全部页面 */
+.screen-host {
+  height: 100%;
+}

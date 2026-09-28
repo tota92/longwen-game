@@ -4,11 +4,25 @@
   "alpha": true,
   "style": "魔幻纹章风格：金质符文环 + 深紫底盘 + 元素光晕",
   "count": 58,
+  "layout": "grouped-subdirs",
+  "dirs": {
+    "element": "elements",
+    "overlay": "overlays",
+    "hero": "heroes",
+    "skill": "skills",
+    "relic": "relics",
+    "enemy": "enemies",
+    "status": "status",
+    "node": "nodes",
+    "ui": "ui",
+    "result": "results"
+  },
   "icons": [
     {
       "id": "el_fire",
       "name": "火元素宝石",
       "group": "element",
+      "dir": "elements",
       "usage": "棋盘火属性宝石",
       "bytes": 12184
     },
@@ -16,6 +30,7 @@
       "id": "el_water",
       "name": "水元素宝石",
       "group": "element",
+      "dir": "elements",
       "usage": "棋盘水属性宝石",
       "bytes": 11925
     },
@@ -23,6 +38,7 @@
       "id": "el_wood",
       "name": "木元素宝石",
       "group": "element",
+      "dir": "elements",
       "usage": "棋盘木属性宝石",
       "bytes": 12393
     },
@@ -30,6 +46,7 @@
       "id": "el_light",
       "name": "光元素宝石",
       "group": "element",
+      "dir": "elements",
       "usage": "棋盘光属性宝石",
       "bytes": 12825
     },
@@ -37,6 +54,7 @@
       "id": "el_dark",
       "name": "暗元素宝石",
       "group": "element",
+      "dir": "elements",
       "usage": "棋盘暗属性宝石",
       "bytes": 13039
     },
@@ -44,6 +62,7 @@
       "id": "el_thunder",
       "name": "雷元素宝石",
       "group": "element",
+      "dir": "elements",
       "usage": "棋盘雷属性宝石",
       "bytes": 12266
     },
@@ -51,6 +70,7 @@
       "id": "ov_small",
       "name": "小技能石标记",
       "group": "overlay",
+      "dir": "overlays",
       "usage": "四消产物，叠加于宝石左上角",
       "bytes": 5189
     },
@@ -58,6 +78,7 @@
       "id": "ov_ultimate",
       "name": "终极技能石标记",
       "group": "overlay",
+      "dir": "overlays",
       "usage": "五消产物，叠加于宝石左上角",
       "bytes": 6972
     },
@@ -65,6 +86,7 @@
       "id": "ov_bomb",
       "name": "炸弹石标记",
       "group": "overlay",
+      "dir": "overlays",
       "usage": "L/T 型产物，叠加于宝石左上角",
       "bytes": 5975
     },
@@ -72,6 +94,7 @@
       "id": "ov_freeze",
       "name": "冻结标记",
       "group": "overlay",
+      "dir": "overlays",
       "usage": "被冻结宝石的角标（REQ-ENEMY-101）",
       "bytes": 8682
     },
@@ -79,6 +102,7 @@
       "id": "hero_flame_knight",
       "name": "炎龙骑士",
       "group": "hero",
+      "dir": "heroes",
       "usage": "主战英雄头像 · 火元素",
       "bytes": 19042
     },
@@ -86,6 +110,7 @@
       "id": "hero_frost_witch",
       "name": "冰霜女巫",
       "group": "hero",
+      "dir": "heroes",
       "usage": "英雄头像 · 水元素",
       "bytes": 18438
     },
@@ -93,6 +118,7 @@
       "id": "hero_forest_druid",
       "name": "森林德鲁伊",
       "group": "hero",
+      "dir": "heroes",
       "usage": "英雄头像 · 木元素",
       "bytes": 18321
     },
@@ -100,6 +126,7 @@
       "id": "skill_flame_slash",
       "name": "火焰斩",
       "group": "skill",
+      "dir": "skills",
       "usage": "炎龙骑士四消技能",
       "bytes": 18948
     },
@@ -107,6 +134,7 @@
       "id": "skill_meteor_rain",
       "name": "流星火雨",
       "group": "skill",
+      "dir": "skills",
       "usage": "炎龙骑士五消技能",
       "bytes": 18559
     },
@@ -114,6 +142,7 @@
       "id": "skill_ice_shard",
       "name": "冰锥",
       "group": "skill",
+      "dir": "skills",
       "usage": "冰霜女巫四消技能",
       "bytes": 18829
     },
@@ -121,6 +150,7 @@
       "id": "skill_absolute_zero",
       "name": "绝对零度",
       "group": "skill",
+      "dir": "skills",
       "usage": "冰霜女巫五消技能",
       "bytes": 20123
     },
@@ -128,6 +158,7 @@
       "id": "skill_natures_touch",
       "name": "自然之触",
       "group": "skill",
+      "dir": "skills",
       "usage": "森林德鲁伊四消技能",
       "bytes": 19055
     },
@@ -135,6 +166,7 @@
       "id": "skill_tree_of_life",
       "name": "生命之树",
       "group": "skill",
+      "dir": "skills",
       "usage": "森林德鲁伊五消技能",
       "bytes": 18151
     },
@@ -142,6 +174,7 @@
       "id": "relic_heart_of_flame",
       "name": "火焰之心",
       "group": "relic",
+      "dir": "relics",
       "usage": "遗物：火属性技能伤害 +30%",
       "bytes": 18388
     },
@@ -149,6 +182,7 @@
       "id": "relic_ice_touch",
       "name": "寒冰之触",
       "group": "relic",
+      "dir": "relics",
       "usage": "遗物：冻结持续时间 +1 回合",
       "bytes": 19635
     },
@@ -156,6 +190,7 @@
       "id": "relic_nature_resonance",
       "name": "自然共鸣",
       "group": "relic",
+      "dir": "relics",
       "usage": "遗物：每消除 5 个木宝石回复 3 生命",
       "bytes": 18708
     },
@@ -163,6 +198,7 @@
       "id": "relic_chain_reaction",
       "name": "连锁反应",
       "group": "relic",
+      "dir": "relics",
       "usage": "遗物：连击倍率 +0.3",
       "bytes": 20984
     },
@@ -170,6 +206,7 @@
       "id": "relic_lucky_dice",
       "name": "幸运骰子",
       "group": "relic",
+      "dir": "relics",
       "usage": "遗物：有效交换 20% 概率不消耗回合",
       "bytes": 19250
     },
@@ -177,6 +214,7 @@
       "id": "relic_element_resonance",
       "name": "元素共鸣",
       "group": "relic",
+      "dir": "relics",
       "usage": "遗物：四消 30% 概率额外生成技能石",
       "bytes": 19772
     },
@@ -184,6 +222,7 @@
       "id": "relic_desperate_counter",
       "name": "绝境反击",
       "group": "relic",
+      "dir": "relics",
       "usage": "遗物：生命低于 30% 时全部伤害 +50%",
       "bytes": 18862
     },
@@ -191,6 +230,7 @@
       "id": "relic_gem_mastery",
       "name": "宝石精通",
       "group": "relic",
+      "dir": "relics",
       "usage": "遗物：基础宝石伤害 +2",
       "bytes": 19373
     },
@@ -198,6 +238,7 @@
       "id": "enemy_slime",
       "name": "史莱姆",
       "group": "enemy",
+      "dir": "enemies",
       "usage": "第一章普通敌人头像",
       "bytes": 17432
     },
@@ -205,6 +246,7 @@
       "id": "enemy_fire_lizard",
       "name": "火蜥蜴",
       "group": "enemy",
+      "dir": "enemies",
       "usage": "第二章普通敌人头像",
       "bytes": 18404
     },
@@ -212,6 +254,7 @@
       "id": "enemy_frost_ghost",
       "name": "冰霜幽灵",
       "group": "enemy",
+      "dir": "enemies",
       "usage": "精英敌人头像（冻结棋盘）",
       "bytes": 18561
     },
@@ -219,6 +262,7 @@
       "id": "enemy_dragon_whelp",
       "name": "幼龙",
       "group": "enemy",
+      "dir": "enemies",
       "usage": "教学关两阶段 Boss 头像",
       "bytes": 18933
     },
@@ -226,6 +270,7 @@
       "id": "enemy_ancient_dragon",
       "name": "远古巨龙",
       "group": "enemy",
+      "dir": "enemies",
       "usage": "章节 Boss 头像（两阶段）",
       "bytes": 19225
     },
@@ -233,6 +278,7 @@
       "id": "status_burn",
       "name": "燃烧状态",
       "group": "status",
+      "dir": "status",
       "usage": "敌人面板燃烧状态角标",
       "bytes": 15758
     },
@@ -240,6 +286,7 @@
       "id": "status_poison",
       "name": "中毒状态",
       "group": "status",
+      "dir": "status",
       "usage": "敌人面板中毒状态角标",
       "bytes": 15446
     },
@@ -247,6 +294,7 @@
       "id": "status_freeze",
       "name": "冻结状态",
       "group": "status",
+      "dir": "status",
       "usage": "敌人冻结状态角标（倒计时暂停）",
       "bytes": 18334
     },
@@ -254,6 +302,7 @@
       "id": "status_stun",
       "name": "眩晕状态",
       "group": "status",
+      "dir": "status",
       "usage": "敌人眩晕状态角标（跳过行动）",
       "bytes": 16953
     },
@@ -261,6 +310,7 @@
       "id": "status_shield",
       "name": "护盾状态",
       "group": "status",
+      "dir": "status",
       "usage": "玩家护盾值角标（REQ-HERO-103）",
       "bytes": 15793
     },
@@ -268,6 +318,7 @@
       "id": "status_combo",
       "name": "连击状态",
       "group": "status",
+      "dir": "status",
       "usage": "连击数展示（REQ-FEEL-001）",
       "bytes": 17514
     },
@@ -275,6 +326,7 @@
       "id": "node_tutorial",
       "name": "教学关卡标记",
       "group": "node",
+      "dir": "nodes",
       "usage": "关卡选择 · 教学关节点",
       "bytes": 19063
     },
@@ -282,6 +334,7 @@
       "id": "node_normal",
       "name": "普通关卡标记",
       "group": "node",
+      "dir": "nodes",
       "usage": "关卡选择 · 标准战斗关节点",
       "bytes": 19382
     },
@@ -289,6 +342,7 @@
       "id": "node_elite",
       "name": "精英关卡标记",
       "group": "node",
+      "dir": "nodes",
       "usage": "关卡选择 · 精英关节点（每 5 关）",
       "bytes": 19538
     },
@@ -296,6 +350,7 @@
       "id": "node_boss",
       "name": "Boss 关卡标记",
       "group": "node",
+      "dir": "nodes",
       "usage": "关卡选择 · Boss 关节点（每 10 关）",
       "bytes": 18763
     },
@@ -303,6 +358,7 @@
       "id": "ui_play",
       "name": "开始/继续",
       "group": "ui",
+      "dir": "ui",
       "usage": "主界面开始游戏按钮",
       "bytes": 10476
     },
@@ -310,6 +366,7 @@
       "id": "ui_team",
       "name": "编队",
       "group": "ui",
+      "dir": "ui",
       "usage": "主界面编队入口",
       "bytes": 12494
     },
@@ -317,6 +374,7 @@
       "id": "ui_map",
       "name": "关卡地图",
       "group": "ui",
+      "dir": "ui",
       "usage": "主界面关卡入口/章节地图",
       "bytes": 9635
     },
@@ -324,6 +382,7 @@
       "id": "ui_sound_on",
       "name": "音效开",
       "group": "ui",
+      "dir": "ui",
       "usage": "音效开关（开启态）",
       "bytes": 11071
     },
@@ -331,6 +390,7 @@
       "id": "ui_sound_off",
       "name": "音效关",
       "group": "ui",
+      "dir": "ui",
       "usage": "音效开关（关闭态）",
       "bytes": 11048
     },
@@ -338,6 +398,7 @@
       "id": "ui_pause",
       "name": "暂停",
       "group": "ui",
+      "dir": "ui",
       "usage": "战斗界面暂停按钮（REQ-UI 9.2）",
       "bytes": 11197
     },
@@ -345,6 +406,7 @@
       "id": "ui_back",
       "name": "返回",
       "group": "ui",
+      "dir": "ui",
       "usage": "各页头返回按钮",
       "bytes": 9782
     },
@@ -352,6 +414,7 @@
       "id": "ui_next",
       "name": "下一关",
       "group": "ui",
+      "dir": "ui",
       "usage": "结算界面下一关按钮",
       "bytes": 10005
     },
@@ -359,6 +422,7 @@
       "id": "ui_retry",
       "name": "重开",
       "group": "ui",
+      "dir": "ui",
       "usage": "结算界面立即重开按钮（REQ-LEVEL-005）",
       "bytes": 11209
     },
@@ -366,6 +430,7 @@
       "id": "ui_check",
       "name": "通关确认",
       "group": "ui",
+      "dir": "ui",
       "usage": "关卡已通关标记 / 确认",
       "bytes": 11858
     },
@@ -373,6 +438,7 @@
       "id": "ui_lock",
       "name": "关卡锁定",
       "group": "ui",
+      "dir": "ui",
       "usage": "未解锁关卡节点",
       "bytes": 10188
     },
@@ -380,6 +446,7 @@
       "id": "ui_tip",
       "name": "教学提示",
       "group": "ui",
+      "dir": "ui",
       "usage": "引导条图标（REQ-TUTO-001 无弹窗引导）",
       "bytes": 10818
     },
@@ -387,6 +454,7 @@
       "id": "ui_target",
       "name": "关卡目标",
       "group": "ui",
+      "dir": "ui",
       "usage": "教学关目标标记",
       "bytes": 13417
     },
@@ -394,6 +462,7 @@
       "id": "ui_emblem",
       "name": "龙纹徽记",
       "group": "ui",
+      "dir": "ui",
       "usage": "主界面游戏徽记",
       "bytes": 19849
     },
@@ -401,6 +470,7 @@
       "id": "res_victory",
       "name": "胜利纹章",
       "group": "result",
+      "dir": "results",
       "usage": "结算界面胜利标识",
       "bytes": 19897
     },
@@ -408,6 +478,7 @@
       "id": "res_defeat",
       "name": "战败纹章",
       "group": "result",
+      "dir": "results",
       "usage": "结算界面战败标识",
       "bytes": 19797
     }

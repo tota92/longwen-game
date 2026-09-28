@@ -1,0 +1,49 @@
+/* ============================================================
+ * 通用组件类：跨页面复用的 UI 原子样式
+ * 供所有视图/组件直接消费，与组件内 scoped 样式配合使用
+ * ============================================================ */
+
+/* 通用按钮 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  border: 1px solid var(--border-gold);
+  background: var(--bg-panel);
+  color: var(--text-1);
+  border-radius: var(--r-md);
+  padding: var(--sp-4) var(--sp-6);
+  font-size: 16px;
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out), filter var(--dur-fast);
+}
+.btn:active {
+  transform: scale(0.96);
+  filter: brightness(1.15);
+}
+.btn-primary {
+  background: linear-gradient(180deg, #e8c96a, #b8912c);
+  color: #241a04;
+  font-weight: 700;
+  border-color: var(--gold-light);
+  box-shadow: 0 4px 18px rgba(212, 175, 55, 0.35);
+}
+.btn-big {
+  padding: 14px 30px;
+  font-size: 18px;
+}
+
+/* 通用面板卡片 */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-gold);
+  border-radius: var(--r-lg);
+  backdrop-filter: blur(6px);
+}
+
+/* 标题字体（古风） */
+.font-title {
+  font-family: var(--font-title);
+  letter-spacing: 2px;
+}

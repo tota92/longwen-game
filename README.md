@@ -81,11 +81,13 @@ src/
 全套 **58 枚 256×256 透明 PNG**，覆盖游戏内全部视觉标识位，风格统一为"金质符文环 + 深紫底盘 + 元素光晕"的魔幻纹章语言。
 
 ```bash
-npm run icons            # 生成 public/icons/*.png + manifest.json + 接触表 + 类型清单
+npm run icons            # 生成 public/icons/<分组>/*.png + manifest.json + 接触表 + 类型清单
 npm run icons:inspect    # 以原始 256 尺寸复核指定图标（细节审查）
 ```
 
 ### 图标族系与覆盖范围
+
+图标按用途归档于 `public/icons/` 下的子目录（`elements/` `overlays/` `heroes/` `skills/` `relics/` `enemies/` `status/` `nodes/` `ui/` `results/`），运行时由 `src/utils/icons.ts` 依据 ID 分组自动定位，无需手写路径。
 
 | 族系 | 数量 | 视觉结构 | 覆盖 |
 |---|---|---|---|

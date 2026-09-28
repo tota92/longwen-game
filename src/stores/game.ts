@@ -283,6 +283,8 @@ export const useGameStore = defineStore('game', () => {
     return {
       ...raw,
       iconId: cfg.iconId,
+      // 立绘 ID 同样随配置表派生：旧存档快照可能缺失或残留历史值
+      spriteId: cfg.spriteId,
       tint: raw.tint ?? null,
       phaseAttack,
       phaseCountdown,

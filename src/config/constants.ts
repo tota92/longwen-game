@@ -10,7 +10,7 @@ export const BOARD_SIZE = 8
 /** 六种元素（REQ-BOARD-001） */
 export const ELEMENTS: ElementType[] = ['fire', 'water', 'wood', 'light', 'dark', 'thunder']
 
-/** 元素展示信息（图标为 256×256 透明 PNG，见 public/icons/） */
+/** 元素展示信息（图标为 256×256 透明 PNG，见 public/icons/elements/） */
 export const ELEMENT_INFO: Record<
   ElementType,
   { name: string; iconId: IconId; color: string }

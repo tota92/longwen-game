@@ -1,7 +1,7 @@
 /**
  * 图标 ID 清单（自动生成，请勿手动修改）
  * 生成脚本：scripts/icons/build.ts（图标源：scripts/icons/catalog/*）
- * 共 58 枚 256×256 透明 PNG，产物位于 public/icons/
+ * 共 58 枚 256×256 透明 PNG，按用途归档于 public/icons/<分组>/ 子目录
  */
 
 /** 元素宝石 */

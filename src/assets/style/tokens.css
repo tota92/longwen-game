@@ -1,0 +1,60 @@
+/* ============================================================
+ * 设计令牌（Design Tokens）
+ * 全站唯一视觉事实来源：颜色 / 材质 / 间距 / 圆角 / 阴影 / 动效
+ * 组件一律消费变量而非硬编码数值，保证系列一致性并可整体换肤
+ * ============================================================ */
+:root {
+  /* ---- 色彩：金属与底色 ---- */
+  --gold: #d4af37;
+  --gold-light: #f0d878;
+  --gold-deep: #8a6a1a;
+  --bg-deep: #0d0a17;
+  --bg-raise: #1a1025;
+  /* 面板材质：半透明玻璃 + 金边（魔幻纹章语言） */
+  --bg-panel: rgba(255, 255, 255, 0.06);
+  --bg-panel-strong: rgba(18, 12, 30, 0.86);
+  --border-gold: rgba(212, 175, 55, 0.3);
+  --border-gold-strong: rgba(212, 175, 55, 0.55);
+
+  /* ---- 色彩：文本层次 ---- */
+  --text-1: #f5f0e6; /* 主文本 */
+  --text-2: rgba(245, 240, 230, 0.72); /* 次要文本 */
+  --text-3: rgba(245, 240, 230, 0.45); /* 辅助/标签 */
+
+  /* ---- 色彩：状态语义（HP/护盾/危险） ---- */
+  --hp: #e5484d;
+  --hp-back: #3a2430;
+  --hp-player: #2fa860;
+  --shield: #68d8ff;
+  --danger: #ff5a3c;
+
+  /* ---- 间距节奏（4 的倍数，保证垂直韵律一致） ---- */
+  --sp-1: 4px;
+  --sp-2: 6px;
+  --sp-3: 8px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 22px;
+
+  /* ---- 圆角层级 ---- */
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
+
+  /* ---- 阴影/发光层级 ---- */
+  --shadow-panel: 0 6px 20px rgba(0, 0, 0, 0.45);
+  --shadow-raise: 0 10px 30px rgba(0, 0, 0, 0.55);
+  --glow-gold: 0 0 16px rgba(212, 175, 55, 0.45);
+  --glow-danger: 0 0 16px rgba(255, 90, 60, 0.75);
+
+  /* ---- 动效时长（统一节奏，便于整体调优） ---- */
+  --dur-fast: 0.15s;
+  --dur-base: 0.28s;
+  --dur-slow: 0.5s;
+  --ease-out: cubic-bezier(0.33, 0.9, 0.5, 1);
+
+  /* ---- 字体 ---- */
+  --font-title: 'STKaiti', 'KaiTi', 'Noto Serif SC', serif;
+  --font-body: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+}

@@ -2,11 +2,11 @@
  * 图标构建脚本
  *
  * 流程：SVG（256 逻辑尺寸）→ 512 渲染 → 256 降采样（lanczos3）→ 带透明通道 PNG
- * 产物：
- *   public/icons/<id>.png      256×256 透明 PNG（运行时按 BASE_URL 引用）
- *   public/icons/manifest.json 清单（含分组、用途说明，供文档与校验使用）
- *   src/config/iconIds.ts      自动生成的类型安全 ID 清单（全项目唯一事实来源）
- *   scripts/icons/_sheet.png   接触表（拼版预览，供视觉审查）
+ * 产物（按用途分组归档到子目录）：
+ *   public/icons/<分组>/<id>.png  256×256 透明 PNG（运行时按 BASE_URL 引用）
+ *   public/icons/manifest.json    清单（含分组、用途、相对路径，供文档与校验使用）
+ *   src/config/iconIds.ts         自动生成的类型安全 ID 清单（全项目唯一事实来源）
+ *   scripts/icons/_sheet.png      接触表（拼版预览，供视觉审查）
  *
  * 校验：尺寸必须为 256×256、必须含 alpha 通道、必须存在完全透明像素、单文件体积上限
  * 运行：npx tsx scripts/icons/build.ts
@@ -23,6 +23,20 @@ const OUT_DIR = path.join(ROOT, 'public/icons')
 const SHEET_PATH = path.join(HERE, '_sheet.png')
 const IDS_TS_PATH = path.join(ROOT, 'src/config/iconIds.ts')
 
+/** 分组名 → 归档子目录（与 src/utils/icons.ts 的映射保持一致） */
+const GROUP_DIRS: Record<string, string> = {
+  element: 'elements',
+  overlay: 'overlays',
+  hero: 'heroes',
+  skill: 'skills',
+  relic: 'relics',
+  enemy: 'enemies',
+  status: 'status',
+  node: 'nodes',
+  ui: 'ui',
+  result: 'results'
+}
+
 /** 单文件体积上限（KB）：256×256 透明 PNG 的合理范围 */
 const MAX_KB = 80
 /** 接触表列数 */
@@ -34,6 +48,7 @@ interface BuiltIcon {
   id: string
   name: string
   group: string
+  dir: string
   usage: string
   bytes: number
 }
@@ -117,7 +132,7 @@ async function writeIdRegistry(): Promise<void> {
     '/**',
     ' * 图标 ID 清单（自动生成，请勿手动修改）',
     ' * 生成脚本：scripts/icons/build.ts（图标源：scripts/icons/catalog/*）',
-    ` * 共 ${CATALOG.length} 枚 256×256 透明 PNG，产物位于 public/icons/`,
+    ` * 共 ${CATALOG.length} 枚 256×256 透明 PNG，按用途归档于 public/icons/<分组>/ 子目录`,
     ' */',
     ''
   ]
@@ -150,22 +165,29 @@ async function writeIdRegistry(): Promise<void> {
 
 async function main(): Promise<void> {
   await mkdir(OUT_DIR, { recursive: true })
+  // 预创建全部分组子目录（即使某组暂为空也保持目录结构完整）
+  await Promise.all(
+    Object.values(GROUP_DIRS).map((dir) => mkdir(path.join(OUT_DIR, dir), { recursive: true }))
+  )
 
-  // 唯一性校验
+  // 唯一性校验 + 分组目录校验
   const seen = new Set<string>()
   for (const def of CATALOG) {
     if (seen.has(def.id)) errors.push(`重复的图标 ID：${def.id}`)
     seen.add(def.id)
+    if (!GROUP_DIRS[def.group]) errors.push(`未知分组「${def.group}」（图标 ${def.id}）：缺少归档子目录映射`)
   }
 
   for (const def of CATALOG) {
     const png = await renderIcon(def.svg)
     await verifyPng(def.id, png)
-    await writeFile(path.join(OUT_DIR, `${def.id}.png`), png)
+    const dir = GROUP_DIRS[def.group] ?? ''
+    await writeFile(path.join(OUT_DIR, dir, `${def.id}.png`), png)
     built.push({
       id: def.id,
       name: def.name,
       group: def.group,
+      dir,
       usage: def.usage,
       bytes: png.length
     })
@@ -180,6 +202,9 @@ async function main(): Promise<void> {
         alpha: true,
         style: '魔幻纹章风格：金质符文环 + 深紫底盘 + 元素光晕',
         count: built.length,
+        /* 归档结构：icons/<用途子目录>/<id>.png，子目录见各条目的 dir 字段 */
+        layout: 'grouped-subdirs',
+        dirs: GROUP_DIRS,
         icons: built
       },
       null,
@@ -200,7 +225,7 @@ async function main(): Promise<void> {
     '分组：' +
       [...byGroup.entries()].map(([g, n]) => `${GROUP_LABELS[g] ?? g}×${n}`).join('  ')
   )
-  console.log(`产物目录：public/icons/  接触表：scripts/icons/_sheet.png`)
+  console.log(`产物目录：public/icons/<分组>/  接触表：scripts/icons/_sheet.png`)
   console.log(`类型清单：src/config/iconIds.ts`)
 
   if (errors.length > 0) {

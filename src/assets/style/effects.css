@@ -1,0 +1,58 @@
+/* ============================================================
+ * 全局特效：震屏 / 闪白 / 页面切换过渡 / 动效无障碍
+ * ============================================================ */
+
+/* ============================================================
+ * 动效无障碍：尊重系统"减弱动态效果"设置
+ * 保留状态变化反馈（血量/伤害/胜负），关闭装饰性与循环动效
+ * ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* 震屏属于强动效，直接关闭（改由闪白承担受击反馈） */
+  .screen-shake {
+    animation: none !important;
+  }
+}
+
+/* 屏幕震动 */
+@keyframes shake-anim {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-4px, 2px); }
+  40% { transform: translate(4px, -2px); }
+  60% { transform: translate(-3px, -1px); }
+  80% { transform: translate(3px, 1px); }
+}
+.screen-shake {
+  animation: shake-anim 0.3s ease-in-out;
+}
+
+/* 闪白层 */
+.flash-white {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: #fff;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 200;
+}
+.flash-white.active {
+  opacity: 0.55;
+}
+
+/* 页面切换过渡 */
+.screen-enter-active,
+.screen-leave-active {
+  transition: opacity 0.22s ease;
+}
+.screen-enter-from,
+.screen-leave-to {
+  opacity: 0;
+}

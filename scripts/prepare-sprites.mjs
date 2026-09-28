@@ -5,8 +5,10 @@
  *   1. trim   —— 按 alpha 通道裁掉四周透明留白，让立绘紧贴内容边界，
  *                上屏时宽高比才是角色真实比例，不会被留白挤压
  *   2. resize —— 收敛到 640px 高（展示区约 140px，2x/3x 屏下仍有余量）
- *   3. 规范化命名 —— 输出为 hero_*.png / enemy_*.png，与配置表 iconId 对齐
+ *   3. 规范化命名与归档 —— 按阵营输出到 heroes/ 或 enemies/ 子目录，
+ *      文件名与配置表 iconId 对齐（运行时由 src/utils/sprites.ts 定位）
  *
+ * 原始立绘直接放入 public/sprites/ 根目录，处理后自动清理。
  * 用法：node scripts/prepare-sprites.mjs
  */
 import fs from 'node:fs'
@@ -17,28 +19,36 @@ const DIR = path.resolve('public/sprites')
 
 /** 关键词 → 规范文件名（原始文件名含中文描述，按关键词匹配更稳） */
 const RULES = [
-  ['炎龙', 'hero_flame_knight.png'],
-  ['女性冰霜', 'hero_frost_witch.png'],
-  ['森林德鲁', 'hero_forest_druid.png'],
-  ['凝胶史莱', 'enemy_slime.png'],
-  ['熔岩火焰蜥蜴', 'enemy_fire_lizard.png'],
-  ['冰霜幽灵', 'enemy_frost_ghost.png'],
-  ['年幼的小龙', 'enemy_dragon_whelp.png'],
-  ['远古巨龙', 'enemy_ancient_dragon.png']
+  ['炎龙', 'heroes/hero_flame_knight.png'],
+  ['女性冰霜', 'heroes/hero_frost_witch.png'],
+  ['森林德鲁', 'heroes/hero_forest_druid.png'],
+  ['凝胶史莱', 'enemies/enemy_slime.png'],
+  ['熔岩火焰蜥蜴', 'enemies/enemy_fire_lizard.png'],
+  ['冰霜幽灵', 'enemies/enemy_frost_ghost.png'],
+  ['年幼的小龙', 'enemies/enemy_dragon_whelp.png'],
+  ['远古巨龙', 'enemies/enemy_ancient_dragon.png']
 ]
 
 /** 目标高度（px）：展示区立绘约 140px，2x 屏需要 280px，640 留足余量 */
 const TARGET_H = 640
 
-const files = fs.readdirSync(DIR).filter((f) => f.endsWith('.png') && !/^(hero|enemy)_/.test(f))
+/** 原始文件：位于 sprites 根目录、且不属于任何归档子目录的 PNG */
+const files = fs
+  .readdirSync(DIR)
+  .filter((f) => f.endsWith('.png'))
 
 if (files.length === 0) {
   console.log('[sprites] 没有待处理的原始立绘，跳过')
   process.exit(0)
 }
 
+// 确保阵营子目录存在
+for (const dir of new Set(RULES.map(([, out]) => path.dirname(out)))) {
+  fs.mkdirSync(path.join(DIR, dir), { recursive: true })
+}
+
 let done = 0
-for (const [keyword, outName] of RULES) {
+for (const [keyword, outRel] of RULES) {
   const src = files.find((f) => f.includes(keyword))
   if (!src) {
     console.warn(`[sprites] 未找到匹配「${keyword}」的原始文件`)
@@ -49,11 +59,11 @@ for (const [keyword, outName] of RULES) {
     .trim({ threshold: 1 })
     .resize({ height: TARGET_H, fit: 'inside', withoutEnlargement: false })
     .png({ compressionLevel: 9, effort: 10 })
-    .toFile(path.join(DIR, outName))
+    .toFile(path.join(DIR, outRel))
 
-  const meta = await sharp(path.join(DIR, outName)).metadata()
+  const meta = await sharp(path.join(DIR, outRel)).metadata()
   console.log(
-    `[sprites] ${outName.padEnd(28)} ${out.width}×${out.height}  alpha=${meta.hasAlpha}  ${(out.size / 1024).toFixed(0)}KB`
+    `[sprites] ${outRel.padEnd(36)} ${out.width}×${out.height}  alpha=${meta.hasAlpha}  ${(out.size / 1024).toFixed(0)}KB`
   )
   done++
 }
@@ -62,7 +72,7 @@ for (const [keyword, outName] of RULES) {
 for (const f of files) fs.unlinkSync(path.join(DIR, f))
 
 const total = fs
-  .readdirSync(DIR)
+  .readdirSync(DIR, { recursive: true })
   .filter((f) => f.endsWith('.png'))
   .reduce((s, f) => s + fs.statSync(path.join(DIR, f)).size, 0)
 console.log(`[sprites] 完成 ${done} 张，目录总计 ${(total / 1024 / 1024).toFixed(2)}MB`)

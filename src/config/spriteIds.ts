@@ -1,11 +1,12 @@
 /**
  * 角色立绘 ID 清单
  *
- * 立绘为 640px 高、带 alpha 通道的 PNG，位于 public/sprites/，
+ * 立绘为 640px 高、带 alpha 通道的 PNG，按阵营归档于
+ * public/sprites/heroes/ 与 public/sprites/enemies/，
  * 由 scripts/prepare-sprites.mjs 从原始生成图裁切压缩而来。
  * ID 与配置表中的 hero_* / enemy_* 保持一致，便于同一套 ID 引用两种资源：
- *   - public/icons/   → 256×256 圆形头像（列表、按钮、棋盘宝石）
- *   - public/sprites/ → 大尺寸角色立绘（战斗展示区）
+ *   - public/icons/<分组>/   → 256×256 圆形头像（列表、按钮、棋盘宝石）
+ *   - public/sprites/<阵营>/ → 大尺寸角色立绘（战斗展示区）
  */
 
 /** 英雄立绘 */

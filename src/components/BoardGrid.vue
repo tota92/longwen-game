@@ -346,7 +346,7 @@ const frozenMarkIcon = iconUrl(FROZEN_MARK_ICON)
 }
 
 /*
- * 宝石本体：直接使用 256×256 透明 PNG 图标（public/icons/el_*.png）
+ * 宝石本体：直接使用 256×256 透明 PNG 图标（public/icons/elements/el_*.png）
  * 图像内已绘制六边切面、金质包边、明暗棱面与元素印记，
  * CSS 只负责尺寸、投影与状态动效，避免重复绘制成本
  */
