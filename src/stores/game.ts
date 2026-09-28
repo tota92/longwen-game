@@ -84,6 +84,8 @@ interface BattleRuntime {
   tutorialProgress: number
   /** 教学 1-1：高亮提示的有效交换对 */
   hint: [Pos, Pos] | null
+  /** 教程引导是否已被玩家手动关闭（仅本关有效，重开/换关后恢复） */
+  guideDismissed: boolean
   /** 洗牌动画标记 */
   shuffling: boolean
 }
@@ -118,6 +120,7 @@ export const useGameStore = defineStore('game', () => {
     boardSeq: 0,
     tutorialProgress: 0,
     hint: null,
+    guideDismissed: false,
     shuffling: false
   })
 
@@ -128,6 +131,9 @@ export const useGameStore = defineStore('game', () => {
   const flashWhite = ref(0)
   /** 敌人行动预警计数（REQ-FEEL-005：行动前 0.5 秒预警动画） */
   const enemyWarn = ref(0)
+  /** 提示区当前展示的系统提示（自动消失；教程引导走 guideText 常驻） */
+  const tip = ref<{ id: number; text: string } | null>(null)
+  let tipTimer = 0
   let uid = 1
 
   // 遗物三选一候选
@@ -167,6 +173,20 @@ export const useGameStore = defineStore('game', () => {
     }
     return null
   })
+
+  /**
+   * 提示区当前应展示的内容（系统提示优先于教程引导）。
+   * 所有提示统一收敛到棋盘下方的独立提示区，不再挤占或遮挡棋盘。
+   */
+  const activeTip = computed<{ text: string; kind: 'tutorial' | 'system' } | null>(() => {
+    if (tip.value) return { text: tip.value.text, kind: 'system' }
+    const guide = guideText.value
+    if (guide && !battle.guideDismissed) return { text: guide, kind: 'tutorial' }
+    return null
+  })
+
+  /** 是否存在被手动关闭、可重新打开的教程引导 */
+  const hasHiddenGuide = computed(() => !!guideText.value && battle.guideDismissed)
 
   // ================================================================
   // 存档
@@ -228,12 +248,47 @@ export const useGameStore = defineStore('game', () => {
   // ================================================================
   // UI 瞬态工具
   // ================================================================
+  /**
+   * 提示区：展示一条系统提示（到点自动消失）。
+   * 系统提示不再以飘字形式盖在棋盘上，统一走棋盘下方的独立提示区，
+   * 避免多条信息叠加遮挡操作区域。
+   */
+  function showTip(text: string, duration = ANIM.tip): void {
+    clearTimeout(tipTimer)
+    tip.value = { id: uid++, text }
+    tipTimer = window.setTimeout(() => {
+      tip.value = null
+    }, duration)
+  }
+
+  /** 手动关闭提示：系统提示直接清掉；教程引导则标记为本关不再显示 */
+  function dismissTip(): void {
+    if (tip.value) {
+      clearTimeout(tipTimer)
+      tip.value = null
+      return
+    }
+    if (guideText.value) battle.guideDismissed = true
+  }
+
+  /** 重新打开被手动关闭的教程引导 */
+  function reopenTip(): void {
+    battle.guideDismissed = false
+  }
+
   function addFloat(text: string, kind: FloatText['kind']): void {
+    // 系统提示统一走提示区，不再盖在棋盘上
+    if (kind === 'info') {
+      showTip(text)
+      return
+    }
     // x 轴轻微抖动：避免同回合多条飘字完全重叠（连击/技能/状态同时出现时）
     const ft: FloatText = {
       id: uid++,
       x: 50 + Math.round((Math.random() - 0.5) * 26),
-      y: kind === 'heal' ? 78 : 22,
+      // 飘字贴着自己的阵营显示：伤害/技能落在敌方区、治疗落在己方区，
+      // 不再压在棋盘格子上（REQ-DAMAGE-006：飘字不遮挡棋盘操作区域）
+      y: kind === 'heal' ? 88 : 13,
       text,
       kind
     }
@@ -292,8 +347,11 @@ export const useGameStore = defineStore('game', () => {
     battle.phase = 'fighting'
     battle.paused = false
     battle.tutorialProgress = 0
+    battle.guideDismissed = false
     battle.shuffling = false
     floatTexts.value = []
+    clearTimeout(tipTimer)
+    tip.value = null
     cutIn.value = null
 
     // DDA-001：同关连续失败 2 次 → 开局赠送小技能石
@@ -356,8 +414,11 @@ export const useGameStore = defineStore('game', () => {
     battle.paused = false
     battle.tutorialProgress = level.tutorial === 'match' ? snap.turnCount : 0
     battle.hint = level.tutorial === 'match' ? battle.board.findValidSwap() : null
+    battle.guideDismissed = false
     battle.shuffling = false
     floatTexts.value = []
+    clearTimeout(tipTimer)
+    tip.value = null
 
     // 若中断发生在遗物三选一，恢复同样的候选并重新进入选择阶段（旧存档无 phase 字段则视为战斗阶段）
     const offers = (snap.relicOffers ?? []).filter((id) => !battle.relics.includes(id))
@@ -1039,12 +1100,15 @@ export const useGameStore = defineStore('game', () => {
     flashWhite,
     enemyWarn,
     relicOffers,
+    tip,
     // 派生
     leader,
     supports,
     sameBonusElement,
     hasBattleSnapshot,
     guideText,
+    activeTip,
+    hasHiddenGuide,
     // 动作
     setScreen,
     startLevel,
@@ -1057,6 +1121,9 @@ export const useGameStore = defineStore('game', () => {
     setLeader,
     toggleSound,
     getRelicInfo,
+    dismissTip,
+    reopenTip,
+    showTip,
     saveSnapshot
   }
 })

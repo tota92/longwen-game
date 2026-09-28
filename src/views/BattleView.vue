@@ -19,6 +19,7 @@ import SkillCutIn from '@/components/SkillCutIn.vue'
 import RelicSelect from '@/components/RelicSelect.vue'
 import ResultOverlay from '@/components/ResultOverlay.vue'
 import PauseOverlay from '@/components/PauseOverlay.vue'
+import TipBar from '@/components/TipBar.vue'
 import { iconUrl } from '@/utils/icons'
 
 const store = useGameStore()
@@ -47,8 +48,8 @@ const waveText = computed(() => {
       <div class="turn-text num">回合 {{ battle.turnCount }}</div>
     </div>
 
-    <!-- 敌方区（含引导文案：教程提示并入敌方面板，避免新增一条边框行挤压棋盘） -->
-    <EnemyPanel :guide="store.guideText" />
+    <!-- 敌方区 -->
+    <EnemyPanel />
 
     <!-- 棋盘：战斗界面的游玩区，占满可用宽度与剩余高度 -->
     <div class="board-wrap" :class="{ shuffling: battle.shuffling }">
@@ -61,6 +62,8 @@ const waveText = computed(() => {
         @swap="(a, b) => store.doSwap(a, b)"
         @tap-special="(p) => store.tapSpecial(p)"
       />
+      <!-- 提示区：绝对定位于棋盘区底部、不参与文档流，提示的出现/消失不会改变棋盘尺寸 -->
+      <TipBar />
     </div>
 
     <!-- 我方区：主战增益与遗物名称内联在面板内（原独立增益条信息重复，已合并） -->

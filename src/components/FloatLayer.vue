@@ -1,8 +1,12 @@
 <script setup lang="ts">
 /**
  * 浮动层：伤害/治疗飘字 + 连击数展示
- * REQ-DAMAGE-006：伤害飘字，暴击/技能伤害更大字号
+ * REQ-DAMAGE-006：伤害飘字，暴击/技能伤害更大字号；飘字不遮挡棋盘操作区域
  * REQ-FEEL-001：连击数字逐级放大
+ *
+ * 位置约定：飘字贴着自己的阵营显示——伤害/技能落在敌方区（顶部），
+ * 治疗落在己方区（底部），不再压在棋盘格子上。
+ * 系统提示类文案已迁出本层，统一由棋盘下方的独立提示区承载（TipBar.vue）。
  */
 import { useGameStore } from '@/stores/game'
 
@@ -17,7 +21,7 @@ const store = useGameStore()
       :key="ft.id"
       class="float-text"
       :class="`ft-${ft.kind}`"
-      :style="{ left: `${ft.x}%`, top: `${ft.y}%` }"
+      :style="{ '--fx': `${ft.x}%`, '--fy': `${ft.y}%` }"
     >
       {{ ft.text }}
     </div>
@@ -49,6 +53,8 @@ const store = useGameStore()
 /* 飘字动画：上浮 + 淡出 */
 .float-text {
   position: absolute;
+  left: var(--fx);
+  top: var(--fy);
   transform: translate(-50%, 0);
   font-weight: 800;
   white-space: nowrap;
@@ -63,10 +69,23 @@ const store = useGameStore()
   100% { opacity: 0; translate: 0 -34px; }
 }
 
+/* ============================================================
+ * 宽屏（≥860px）：信息栏在右列，飘字跟随自己的面板走，
+ * 不再落在左列的棋盘上（与 BattleView 的双栏布局对齐）
+ * ============================================================ */
+@media (min-width: 860px) {
+  .float-text { left: 78%; }
+  .ft-damage,
+  .ft-crit,
+  .ft-skill { top: 24%; }
+  .ft-heal { top: 74%; }
+}
+
 .ft-damage { color: #ffb199; font-size: 18px; }
 .ft-crit { color: #ff7a59; font-size: 26px; }
 .ft-skill { color: #ffe28a; font-size: 24px; }
 .ft-heal { color: #7dedb2; font-size: 18px; }
+/* 兜底：info 类文案现已统一改走提示区（TipBar），此处保留以防未来有代码直接推入 info 飘字 */
 .ft-info { color: #cfe0ff; font-size: 13px; font-weight: 500; }
 
 /* 连击展示（屏幕中央偏上） */

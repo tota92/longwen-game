@@ -77,7 +77,9 @@ export const ANIM = {
   enemyWarn: 500,
   floatText: 900,
   shuffle: 450,
-  hitFlash: 300
+  hitFlash: 300,
+  /** 提示区系统提示的停留时长（教程引导常驻，直到手动关闭） */
+  tip: 2600
 }
 
 /** 数值换算锚点（REQ-DAMAGE）：1 回合标准输出 = 10 伤害 */

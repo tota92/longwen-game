@@ -10,9 +10,6 @@ import { useGameStore } from '@/stores/game'
 import { TUTORIAL_MATCH_TARGET } from '@/config/constants'
 import { iconUrl } from '@/utils/icons'
 
-/** 教程提示文案（REQ-TUTO-001：非弹窗式引导），为空时不占位 */
-defineProps<{ guide?: string | null }>()
-
 const store = useGameStore()
 const enemy = () => store.battle.enemy
 
@@ -22,8 +19,7 @@ const ICON = {
   stun: iconUrl('status_stun'),
   burn: iconUrl('status_burn'),
   poison: iconUrl('status_poison'),
-  target: iconUrl('ui_target'),
-  tip: iconUrl('ui_tip')
+  target: iconUrl('ui_target')
 } as const
 
 /** 倒计时进度环：剩余回合 / 初始倒计时（0~1），驱动外环的 conic-gradient */
@@ -86,6 +82,17 @@ function isBoss(): boolean {
 }
 
 /**
+ * 该敌人是否可能蓄力。
+ * 用于**预留**蓄力行的位置：蓄力条出现/消失不再改变面板高度，
+ * 否则面板一撑高就会把棋盘顶下去（与提示区同类问题）。
+ */
+function canCharge(): boolean {
+  const e = enemy()
+  if (!e) return false
+  return !!e.charging || e.pattern.some((a) => a.kind === 'charge')
+}
+
+/**
  * 变体主题色：注入 --tint 自定义属性，让头像边框与敌人名字按变体着色。
  * 玩家不用读名字也能一眼分辨「狂暴（红）/ 巨化（紫）/ 迅捷（青）/ 精英（金）」。
  */
@@ -142,15 +149,18 @@ watch(
             <img :src="ICON.poison" alt="" aria-hidden="true" draggable="false" />中毒 {{ enemy()!.poison?.turns }}
           </span>
         </div>
-        <!-- 蓄力：Boss 正在憋大招，抢输出打断是唯一解（5.4 蓄力—打断机制） -->
-        <div v-if="enemy()!.charging" class="charge-row">
-          <span class="charge-tag">蓄力</span>
-          <div class="charge-track">
-            <div class="charge-fill" :style="{ width: `${chargeRatio() * 100}%` }"></div>
-          </div>
-          <span class="charge-text num">
-            打断 {{ Math.min(enemy()!.charging!.taken, enemy()!.charging!.interrupt) }}/{{ enemy()!.charging!.interrupt }}
-          </span>
+        <!-- 蓄力：Boss 正在憋大招，抢输出打断是唯一解（5.4 蓄力—打断机制）
+             外层容器常驻（对会蓄力的敌人），保证蓄力条出现时不撑高面板 -->
+        <div v-if="canCharge()" class="charge-row">
+          <template v-if="enemy()!.charging">
+            <span class="charge-tag">蓄力</span>
+            <div class="charge-track">
+              <div class="charge-fill" :style="{ width: `${chargeRatio() * 100}%` }"></div>
+            </div>
+            <span class="charge-text num">
+              打断 {{ Math.min(enemy()!.charging!.taken, enemy()!.charging!.interrupt) }}/{{ enemy()!.charging!.interrupt }}
+            </span>
+          </template>
         </div>
         <!-- 行动意图：移动端没有 hover，直接写明敌人下次行动会做什么 -->
         <div class="enemy-intent">
@@ -182,12 +192,6 @@ watch(
         </span>
       </div>
     </template>
-
-    <!-- 教程提示：内联在面板底部（REQ-TUTO-001 无强制弹窗，且不额外占用棋盘高度） -->
-    <div v-if="guide" class="guide-row">
-      <img :src="ICON.tip" alt="" aria-hidden="true" draggable="false" />
-      <span>{{ guide }}</span>
-    </div>
   </div>
 </template>
 
@@ -206,24 +210,8 @@ watch(
     var(--bg-panel);
 }
 
-/* 教程提示行：占满一行独立成行（flex-basis 100% 触发换行），不挤压主信息 */
-.guide-row {
-  flex-basis: 100%;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding-top: var(--sp-2);
-  border-top: 1px solid rgba(60, 167, 255, 0.22);
-  font-size: 11.5px;
-  line-height: 1.4;
-  color: #bcd9ff;
-}
-.guide-row img {
-  width: 14px;
-  height: 14px;
-  object-fit: contain;
-  flex-shrink: 0;
-}
+/* 教程提示行已迁出本面板：提示统一由棋盘下方的独立提示区承载（TipBar），
+   避免提示出现时撑高敌方面板、把棋盘顶下去（详见 TipBar.vue 注释） */
 /* 顶部一道敌方色描边，强化"敌方区域"的语义 */
 .enemy-panel::before {
   content: '';
@@ -417,6 +405,8 @@ watch(
   align-items: center;
   gap: 6px;
   margin-top: 5px;
+  /* 常驻预留高度：蓄力条出现时不改变面板高度，避免顶动棋盘 */
+  min-height: 17px;
 }
 .charge-tag {
   flex-shrink: 0;
