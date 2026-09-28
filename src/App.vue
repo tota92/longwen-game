@@ -61,21 +61,65 @@ watch(
 </template>
 
 <style>
-/* ===================== 全局样式 ===================== */
+/* ============================================================
+ * 设计令牌（Design Tokens）
+ * 全站唯一视觉事实来源：颜色 / 材质 / 间距 / 圆角 / 阴影 / 动效
+ * 组件一律消费变量而非硬编码数值，保证系列一致性并可整体换肤
+ * ============================================================ */
 :root {
+  /* ---- 色彩：金属与底色 ---- */
   --gold: #d4af37;
   --gold-light: #f0d878;
+  --gold-deep: #8a6a1a;
   --bg-deep: #0d0a17;
+  --bg-raise: #1a1025;
+  /* 面板材质：半透明玻璃 + 金边（魔幻纹章语言） */
   --bg-panel: rgba(255, 255, 255, 0.06);
+  --bg-panel-strong: rgba(18, 12, 30, 0.86);
   --border-gold: rgba(212, 175, 55, 0.3);
+  --border-gold-strong: rgba(212, 175, 55, 0.55);
+
+  /* ---- 色彩：文本层次 ---- */
+  --text-1: #f5f0e6; /* 主文本 */
+  --text-2: rgba(245, 240, 230, 0.72); /* 次要文本 */
+  --text-3: rgba(245, 240, 230, 0.45); /* 辅助/标签 */
+
+  /* ---- 色彩：状态语义（HP/护盾/危险） ---- */
   --hp: #e5484d;
   --hp-back: #3a2430;
-  --fire: #ff5a3c;
-  --water: #3ca7ff;
-  --wood: #4cd964;
-  --light-el: #ffd94c;
-  --dark-el: #a06bff;
-  --thunder: #ffe135;
+  --hp-player: #2fa860;
+  --shield: #68d8ff;
+  --danger: #ff5a3c;
+
+  /* ---- 间距节奏（4 的倍数，保证垂直韵律一致） ---- */
+  --sp-1: 4px;
+  --sp-2: 6px;
+  --sp-3: 8px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 22px;
+
+  /* ---- 圆角层级 ---- */
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 18px;
+
+  /* ---- 阴影/发光层级 ---- */
+  --shadow-panel: 0 6px 20px rgba(0, 0, 0, 0.45);
+  --shadow-raise: 0 10px 30px rgba(0, 0, 0, 0.55);
+  --glow-gold: 0 0 16px rgba(212, 175, 55, 0.45);
+  --glow-danger: 0 0 16px rgba(255, 90, 60, 0.75);
+
+  /* ---- 动效时长（统一节奏，便于整体调优） ---- */
+  --dur-fast: 0.15s;
+  --dur-base: 0.28s;
+  --dur-slow: 0.5s;
+  --ease-out: cubic-bezier(0.33, 0.9, 0.5, 1);
+
+  /* ---- 字体 ---- */
+  --font-title: 'STKaiti', 'KaiTi', 'Noto Serif SC', serif;
+  --font-body: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
 }
 
 * {
@@ -93,29 +137,60 @@ body,
 
 body {
   background: var(--bg-deep);
-  color: #f5f0e6;
-  font-family:
-    'PingFang SC',
-    'Hiragino Sans GB',
-    'Microsoft YaHei',
-    system-ui,
-    sans-serif;
+  color: var(--text-1);
+  font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
   user-select: none;
   overflow: hidden;
+}
+
+/* 数值一律等宽对齐：HP / 倒计时 / 伤害 / 回合数在跳动时不会左右抖动 */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 
 .app-root {
   position: relative;
   height: 100dvh;
   width: 100vw;
-  max-width: 560px; /* 桌面预览限宽，移动端全屏 */
+  max-width: 560px; /* 移动优先：桌面窄栏预览 */
   margin: 0 auto;
   background:
     radial-gradient(ellipse at 50% -10%, rgba(212, 175, 55, 0.12), transparent 55%),
     radial-gradient(ellipse at 50% 110%, rgba(120, 60, 200, 0.1), transparent 50%),
-    linear-gradient(180deg, #1a1025 0%, #0d0a17 100%);
+    linear-gradient(180deg, var(--bg-raise) 0%, var(--bg-deep) 100%);
   overflow: hidden;
+}
+
+/* 宽屏（≥860px）：解除窄栏限制，交由各页面自行组织双栏布局 */
+@media (min-width: 860px) {
+  .app-root {
+    max-width: none;
+    background:
+      radial-gradient(ellipse at 22% 0%, rgba(212, 175, 55, 0.13), transparent 46%),
+      radial-gradient(ellipse at 84% 100%, rgba(120, 60, 200, 0.14), transparent 48%),
+      linear-gradient(180deg, var(--bg-raise) 0%, var(--bg-deep) 100%);
+  }
+}
+
+/* ============================================================
+ * 动效无障碍：尊重系统"减弱动态效果"设置
+ * 保留状态变化反馈（血量/伤害/胜负），关闭装饰性与循环动效
+ * ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* 震屏属于强动效，直接关闭（改由闪白承担受击反馈） */
+  .screen-shake {
+    animation: none !important;
+  }
 }
 
 /* 屏幕震动 */
@@ -159,15 +234,15 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--sp-2);
   border: 1px solid var(--border-gold);
   background: var(--bg-panel);
-  color: #f5f0e6;
-  border-radius: 12px;
-  padding: 12px 22px;
+  color: var(--text-1);
+  border-radius: var(--r-md);
+  padding: var(--sp-4) var(--sp-6);
   font-size: 16px;
   cursor: pointer;
-  transition: transform 0.12s, filter 0.12s;
+  transition: transform var(--dur-fast) var(--ease-out), filter var(--dur-fast);
 }
 .btn:active {
   transform: scale(0.96);
@@ -177,7 +252,7 @@ body {
   background: linear-gradient(180deg, #e8c96a, #b8912c);
   color: #241a04;
   font-weight: 700;
-  border-color: #f0d878;
+  border-color: var(--gold-light);
   box-shadow: 0 4px 18px rgba(212, 175, 55, 0.35);
 }
 .btn-big {
@@ -189,13 +264,13 @@ body {
 .panel {
   background: var(--bg-panel);
   border: 1px solid var(--border-gold);
-  border-radius: 14px;
+  border-radius: var(--r-lg);
   backdrop-filter: blur(6px);
 }
 
 /* 标题字体（古风） */
 .font-title {
-  font-family: 'STKaiti', 'KaiTi', 'Noto Serif SC', serif;
+  font-family: var(--font-title);
   letter-spacing: 2px;
 }
 </style>

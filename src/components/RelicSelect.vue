@@ -6,6 +6,7 @@
 import { computed } from 'vue'
 import { useGameStore } from '@/stores/game'
 import { getRelic } from '@/config/relics'
+import { iconUrl } from '@/utils/icons'
 
 const store = useGameStore()
 
@@ -41,7 +42,7 @@ function choose(id: string): void {
           :class="`type-${r.type}`"
           @click="choose(r.id)"
         >
-          <span class="relic-card-icon">{{ r.icon }}</span>
+          <img class="relic-card-icon" :src="iconUrl(r.iconId)" :alt="r.name" draggable="false" />
           <span class="relic-card-name font-title">{{ r.name }}</span>
           <span class="relic-card-desc">{{ r.desc }}</span>
           <span class="relic-card-type">{{ TYPE_LABEL[r.type] ?? r.type }}</span>
@@ -123,7 +124,9 @@ function choose(id: string): void {
 }
 
 .relic-card-icon {
-  font-size: 40px;
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
   filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.5));
 }
 .relic-card-name {

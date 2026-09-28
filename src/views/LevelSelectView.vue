@@ -6,6 +6,8 @@ import { computed } from 'vue'
 import { useGameStore } from '@/stores/game'
 import { LEVELS, CHAPTER_NAMES } from '@/config/levels'
 import { getEnemy } from '@/config/enemies'
+import type { WaveEnemy } from '@/types'
+import { iconUrl } from '@/utils/icons'
 
 const store = useGameStore()
 
@@ -18,6 +20,17 @@ const chapters = computed(() => {
   return [...map.entries()]
 })
 
+/** 关卡节点图标：按关卡类型映射（教学/普通/精英/Boss），锁定关使用锁形图标 */
+const NODE_ICON: Record<string, string> = {
+  boss: iconUrl('node_boss'),
+  elite: iconUrl('node_elite'),
+  tutorial: iconUrl('node_tutorial'),
+  normal: iconUrl('node_normal')
+}
+const LOCK_ICON = iconUrl('ui_lock')
+const CHECK_ICON = iconUrl('ui_check')
+const BACK_ICON = iconUrl('ui_back')
+
 function levelState(id: number): 'locked' | 'current' | 'cleared' {
   if (id < store.profile.unlockedLevel) return 'cleared'
   if (id === store.profile.unlockedLevel) return 'current'
@@ -25,15 +38,16 @@ function levelState(id: number): 'locked' | 'current' | 'cleared' {
 }
 
 function levelIcon(type: string): string {
-  if (type === 'boss') return '🐲'
-  if (type === 'elite') return '💠'
-  if (type === 'tutorial') return '📘'
-  return '⚔️'
+  return NODE_ICON[type] ?? NODE_ICON.normal
 }
 
-/** 关卡预览：波次敌人名 */
-function waveNames(waves: { enemyId: string }[]): string {
-  return [...new Set(waves.map((w) => getEnemy(w.enemyId).name))].join(' / ')
+/** 关卡预览：波次敌人名（含变体前缀，让玩家在进关前就知道会遇到什么） */
+function waveNames(waves: WaveEnemy[]): string {
+  return [
+    ...new Set(
+      waves.map((w) => (w.variant ? `${w.variant.namePrefix}·` : '') + getEnemy(w.enemyId).name)
+    )
+  ].join(' / ')
 }
 
 /** 本章已通关数 */
@@ -45,7 +59,9 @@ function clearedInChapter(levels: typeof LEVELS): number {
 <template>
   <div class="levels-view">
     <header class="page-header">
-      <button class="back-btn" @click="store.setScreen('home')">←</button>
+      <button class="back-btn" @click="store.setScreen('home')">
+        <img :src="BACK_ICON" alt="返回" draggable="false" />
+      </button>
       <span class="page-title font-title">征程地图</span>
       <span class="header-space"></span>
     </header>
@@ -67,10 +83,17 @@ function clearedInChapter(levels: typeof LEVELS): number {
             :disabled="levelState(lv.id) === 'locked'"
             @click="store.startLevel(lv.id)"
           >
-            <span class="node-icon">{{ levelState(lv.id) === 'locked' ? '🔒' : levelIcon(lv.type) }}</span>
+            <img
+              class="node-icon"
+              :src="levelState(lv.id) === 'locked' ? LOCK_ICON : levelIcon(lv.type)"
+              :alt="lv.name"
+              draggable="false"
+            />
             <span class="node-id">{{ lv.indexInChapter }}</span>
             <span class="node-name">{{ lv.name }}</span>
-            <span v-if="levelState(lv.id) === 'cleared'" class="node-clear">✓ 已通关</span>
+            <span v-if="levelState(lv.id) === 'cleared'" class="node-clear">
+              <img :src="CHECK_ICON" alt="" aria-hidden="true" draggable="false" />已通关
+            </span>
             <span v-else-if="levelState(lv.id) === 'current'" class="node-current">▶ 当前</span>
             <span v-else class="node-enemy">{{ waveNames(lv.waves) || '教学' }}</span>
           </button>
@@ -102,6 +125,13 @@ function clearedInChapter(levels: typeof LEVELS): number {
   color: #f5f0e6;
   font-size: 16px;
   cursor: pointer;
+}
+.back-btn img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
 }
 .page-title {
   font-size: 19px;
@@ -175,7 +205,12 @@ function clearedInChapter(levels: typeof LEVELS): number {
   background: linear-gradient(180deg, rgba(120, 190, 255, 0.12), rgba(120, 190, 255, 0.02));
 }
 
-.node-icon { font-size: 22px; }
+.node-icon {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.55));
+}
 .node-id {
   position: absolute;
   top: 6px;
@@ -192,8 +227,16 @@ function clearedInChapter(levels: typeof LEVELS): number {
   color: rgba(245, 240, 230, 0.4);
 }
 .node-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   font-size: 9px;
   color: #7dedb2;
+}
+.node-clear img {
+  width: 11px;
+  height: 11px;
+  object-fit: contain;
 }
 .node-current {
   font-size: 9px;

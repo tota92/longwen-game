@@ -10,7 +10,9 @@ export const HEROES: HeroConfig[] = [
     name: '炎龙骑士',
     title: '烈焰执刃者',
     element: 'fire',
-    icon: '🐉',
+    iconId: 'hero_flame_knight',
+    skill4IconId: 'skill_flame_slash',
+    skill5IconId: 'skill_meteor_rain',
     color: '#ff5a3c',
     skill4: {
       name: '火焰斩',
@@ -31,7 +33,9 @@ export const HEROES: HeroConfig[] = [
     name: '冰霜女巫',
     title: '极寒咏叹者',
     element: 'water',
-    icon: '❄️',
+    iconId: 'hero_frost_witch',
+    skill4IconId: 'skill_ice_shard',
+    skill5IconId: 'skill_absolute_zero',
     color: '#3ca7ff',
     skill4: {
       name: '冰锥',
@@ -53,7 +57,9 @@ export const HEROES: HeroConfig[] = [
     name: '森林德鲁伊',
     title: '自然守望者',
     element: 'wood',
-    icon: '🌳',
+    iconId: 'hero_forest_druid',
+    skill4IconId: 'skill_natures_touch',
+    skill5IconId: 'skill_tree_of_life',
     color: '#4cd964',
     skill4: {
       name: '自然之触',

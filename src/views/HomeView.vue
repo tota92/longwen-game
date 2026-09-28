@@ -3,8 +3,27 @@
  * 主界面（REQ-UI 9.1）：开始游戏 / 继续战斗 / 编队 / 关卡选择 / 设置
  */
 import { useGameStore } from '@/stores/game'
+import { iconUrl } from '@/utils/icons'
+import { ELEMENT_INFO, ELEMENTS } from '@/config/constants'
 
 const store = useGameStore()
+
+/** 主界面图标：徽记 / 开始 / 编队 / 关卡 / 音效 */
+const ICON = {
+  emblem: iconUrl('ui_emblem'),
+  play: iconUrl('ui_play'),
+  team: iconUrl('ui_team'),
+  map: iconUrl('ui_map'),
+  soundOn: iconUrl('ui_sound_on'),
+  soundOff: iconUrl('ui_sound_off')
+} as const
+
+/** 环形法阵上的四枚元素宝石（旋转排布） */
+const emblemRunes = ELEMENTS.slice(0, 4).map((el, i) => ({
+  id: el,
+  src: iconUrl(ELEMENT_INFO[el].iconId),
+  angle: i * 90 - 90
+}))
 
 function onStart(): void {
   if (store.hasBattleSnapshot) {
@@ -28,28 +47,43 @@ function onStart(): void {
       <p class="home-slogan">三消聚能 · 技能爆发 · 遗物构建</p>
     </div>
 
-    <!-- 龙纹徽记：环形法阵 + 悬浮龙首，填补竖屏中段的留白 -->
+    <!-- 龙纹徽记：环形法阵 + 悬浮龙首纹章，四枚元素宝石环绕（均为 256×256 透明 PNG） -->
     <div class="home-emblem">
       <span class="emblem-ring ring-outer"></span>
       <span class="emblem-ring ring-dashed"></span>
       <span class="emblem-ring ring-inner"></span>
-      <span class="emblem-rune rune-a">火</span>
-      <span class="emblem-rune rune-b">水</span>
-      <span class="emblem-rune rune-c">木</span>
-      <span class="emblem-rune rune-d">雷</span>
-      <div class="home-dragon">🐉</div>
+      <img
+        v-for="r in emblemRunes"
+        :key="r.id"
+        class="emblem-rune-gem"
+        :src="r.src"
+        alt=""
+        aria-hidden="true"
+        draggable="false"
+        :style="{ transform: `rotate(${r.angle}deg) translate(0, -104px) rotate(${-r.angle}deg)` }"
+      />
+      <img class="home-emblem-img" :src="ICON.emblem" alt="龙纹徽记" draggable="false" />
     </div>
 
     <div class="home-actions">
       <button class="btn btn-primary btn-big home-start" @click="onStart">
-        <template v-if="store.hasBattleSnapshot">▶ 继续战斗</template>
-        <template v-else>▶ 开始游戏</template>
+        <img :src="ICON.play" alt="" aria-hidden="true" draggable="false" />
+        <template v-if="store.hasBattleSnapshot">继续战斗</template>
+        <template v-else>开始游戏</template>
       </button>
       <div class="home-row">
-        <button class="btn" @click="store.setScreen('team')">🛡 编队</button>
-        <button class="btn" @click="store.setScreen('levels')">🗺 关卡</button>
-        <button class="btn" @click="store.toggleSound()">
-          {{ store.profile.settings.sound ? '🔊' : '🔇' }}
+        <button class="btn" @click="store.setScreen('team')">
+          <img :src="ICON.team" alt="" aria-hidden="true" draggable="false" />编队
+        </button>
+        <button class="btn" @click="store.setScreen('levels')">
+          <img :src="ICON.map" alt="" aria-hidden="true" draggable="false" />关卡
+        </button>
+        <button class="btn home-sound" @click="store.toggleSound()">
+          <img
+            :src="store.profile.settings.sound ? ICON.soundOn : ICON.soundOff"
+            :alt="store.profile.settings.sound ? '音效开' : '音效关'"
+            draggable="false"
+          />
         </button>
       </div>
     </div>
@@ -166,24 +200,24 @@ function onStart(): void {
   to { rotate: 360deg; }
 }
 
-/* 四元素符文环绕 */
-.emblem-rune {
+/* 四元素宝石环绕法阵（沿圆周 90° 均匀排布，图标保持正向） */
+.emblem-rune-gem {
   position: absolute;
-  font-size: 12px;
-  font-family: 'STKaiti', 'KaiTi', serif;
-  color: rgba(212, 175, 55, 0.55);
-  text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.55));
 }
-.rune-a { top: 4%; left: 50%; transform: translateX(-50%); }
-.rune-b { bottom: 4%; left: 50%; transform: translateX(-50%); }
-.rune-c { left: 3%; top: 50%; transform: translateY(-50%); }
-.rune-d { right: 3%; top: 50%; transform: translateY(-50%); }
 
-.home-dragon {
+.home-emblem-img {
   position: relative;
-  font-size: 96px;
-  line-height: 1;
-  filter: drop-shadow(0 0 30px rgba(212, 175, 55, 0.45));
+  width: 60%;
+  height: 60%;
+  object-fit: contain;
+  filter: drop-shadow(0 0 30px rgba(212, 175, 55, 0.5));
   animation: dragon-float 3.2s ease-in-out infinite;
 }
 @keyframes dragon-float {
@@ -212,6 +246,18 @@ function onStart(): void {
   font-size: 14px;
   padding: 10px 8px;
 }
+/* 按钮内图标统一尺寸，与文字基线对齐 */
+.btn img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+/* 金色主按钮上的图标压暗为古铜色，与按钮深色文字保持同一对比体系 */
+.btn-primary img {
+  filter: brightness(0.28) saturate(1.3);
+}
+.home-sound img { width: 22px; height: 22px; }
 
 .home-footer {
   display: flex;

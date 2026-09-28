@@ -4,31 +4,44 @@
  * 展示：胜负、总伤害、最高连击、重开/下一关
  */
 import { useGameStore } from '@/stores/game'
+import { iconUrl } from '@/utils/icons'
 
 const store = useGameStore()
 const victory = store.battle.result === 'victory'
 const hasNext = store.battle.level ? store.battle.level.id < 15 : false
+
+/** 结算纹章与按钮图标（256×256 透明 PNG） */
+const ICON = {
+  victory: iconUrl('res_victory'),
+  defeat: iconUrl('res_defeat'),
+  retry: iconUrl('ui_retry'),
+  next: iconUrl('ui_next')
+} as const
 </script>
 
 <template>
   <div class="result-mask" :class="victory ? 'win' : 'lose'">
     <div class="result-dialog">
-      <div class="result-banner font-title">
-        {{ victory ? '⚔️ 战 胜 ⚔️' : '💀 战 败 💀' }}
-      </div>
+      <img
+        class="result-emblem"
+        :src="victory ? ICON.victory : ICON.defeat"
+        :alt="victory ? '胜利' : '战败'"
+        draggable="false"
+      />
+      <div class="result-banner font-title">{{ victory ? '战 胜' : '战 败' }}</div>
 
       <div class="result-stats">
         <div class="stat-item">
           <span class="stat-label">总伤害</span>
-          <span class="stat-value">{{ store.battle.totalDamage }}</span>
+          <span class="stat-value num">{{ store.battle.totalDamage }}</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">最高连击</span>
-          <span class="stat-value">{{ store.battle.maxComboInBattle }}</span>
+          <span class="stat-value num">{{ store.battle.maxComboInBattle }}</span>
         </div>
         <div class="stat-item">
           <span class="stat-label">回合数</span>
-          <span class="stat-value">{{ store.battle.turnCount }}</span>
+          <span class="stat-value num">{{ store.battle.turnCount }}</span>
         </div>
       </div>
 
@@ -37,11 +50,11 @@ const hasNext = store.battle.level ? store.battle.level.id < 15 : false
       <div class="result-actions">
         <!-- 重开按钮：视觉最突出（REQ-LEVEL-005 / G-05） -->
         <button v-if="!victory" class="btn btn-primary btn-big result-retry" @click="store.retryLevel()">
-          ↻ 立即重开
+          <img :src="ICON.retry" alt="" aria-hidden="true" draggable="false" />立即重开
         </button>
         <template v-else>
           <button v-if="hasNext" class="btn btn-primary btn-big" @click="store.nextLevel()">
-            下一关 →
+            下一关<img :src="ICON.next" alt="" aria-hidden="true" draggable="false" />
           </button>
           <button v-else class="btn btn-primary btn-big" @click="store.setScreen('levels')">
             通关！返回地图
@@ -84,6 +97,34 @@ const hasNext = store.battle.level ? store.battle.level.id < 15 : false
   font-size: 34px;
   letter-spacing: 10px;
   margin-bottom: 18px;
+}
+/* 结算纹章：胜负标识主视觉 */
+.result-emblem {
+  width: 116px;
+  height: 116px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 4px;
+  animation: emblem-in 0.5s cubic-bezier(0.2, 1.4, 0.5, 1);
+}
+@keyframes emblem-in {
+  from { scale: 0.4; opacity: 0; rotate: -12deg; }
+  to { scale: 1; opacity: 1; rotate: 0deg; }
+}
+.win .result-emblem {
+  filter: drop-shadow(0 0 22px rgba(212, 175, 55, 0.75));
+}
+.lose .result-emblem {
+  filter: drop-shadow(0 0 20px rgba(160, 107, 255, 0.6));
+}
+.btn img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+/* 金色主按钮上的图标压暗为古铜色，与按钮深色文字保持同一对比体系 */
+.btn-primary img {
+  filter: brightness(0.28) saturate(1.3);
 }
 .win .result-banner {
   color: var(--gold-light);

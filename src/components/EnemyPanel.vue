@@ -1,15 +1,30 @@
 <script setup lang="ts">
 /**
- * 敌人面板：头像/HP（多阶段分段）/行动倒计时/状态图标/行动预警
+ * 敌人面板：头像/HP（多阶段分段）/行动倒计时/状态图标/行动预警/教程提示
  * REQ-ENEMY-001：倒计时常显，≤1 高亮警告
  * REQ-FEEL-005：行动前 0.5 秒预警动画
+ * UI 层次：敌方信息为单一信息簇，教程提示内联于此，避免新增边框行挤压棋盘
  */
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useGameStore } from '@/stores/game'
 import { TUTORIAL_MATCH_TARGET } from '@/config/constants'
+import { iconUrl } from '@/utils/icons'
+
+/** 教程提示文案（REQ-TUTO-001：非弹窗式引导），为空时不占位 */
+defineProps<{ guide?: string | null }>()
 
 const store = useGameStore()
 const enemy = () => store.battle.enemy
+
+/** 状态与目标图标（256×256 透明 PNG） */
+const ICON = {
+  freeze: iconUrl('status_freeze'),
+  stun: iconUrl('status_stun'),
+  burn: iconUrl('status_burn'),
+  poison: iconUrl('status_poison'),
+  target: iconUrl('ui_target'),
+  tip: iconUrl('ui_tip')
+} as const
 
 /** 倒计时进度环：剩余回合 / 初始倒计时（0~1），驱动外环的 conic-gradient */
 function cdRatio(): number {
@@ -24,6 +39,27 @@ function intentText(): string {
   if (!e) return ''
   if (e.frozen > 0) return '被冰冻，倒计时暂停'
   if (e.stunned > 0) return '眩晕中，将跳过行动'
+  // 蓄力中：直接告诉玩家"要放大招了"，配合进度条形成抢输出的压力
+  if (e.charging) return `蓄力中 ·「${e.charging.release}」${e.charging.damage} 点伤害`
+  const action = e.pattern && e.pattern.length > 0
+    ? e.pattern[e.patternIndex % e.pattern.length]
+    : null
+  if (action) {
+    switch (action.kind) {
+      case 'attack':
+        return `${action.name}（${e.attack} 点伤害）`
+      case 'freezeBoard':
+        return `${action.name}（冻结 ${action.size}×${action.size}${action.damage ? ` + ${action.damage} 伤害` : ''}）`
+      case 'poison':
+        return `${action.name}（${action.damage} 伤害 + 中毒）`
+      case 'burn':
+        return `${action.name}（${action.damage} 伤害 + 灼烧）`
+      case 'charge':
+        return `${action.name}（蓄力，${action.interrupt} 伤害可打断）`
+      case 'drain':
+        return `${action.name}（${action.damage} 伤害并回血）`
+    }
+  }
   switch (e.skill.type) {
     case 'freezeBoard':
       return `冻结棋盘 ${e.skill.size}×${e.skill.size} 区域（${e.skill.turns} 回合）`
@@ -35,6 +71,28 @@ function intentText(): string {
       return `攻击 ${e.attack} 点伤害`
   }
 }
+
+/** 蓄力进度（已承受伤害 / 打断阈值），驱动进度条宽度 */
+function chargeRatio(): number {
+  const c = enemy()?.charging
+  if (!c || c.interrupt <= 0) return 0
+  return Math.max(0, Math.min(1, c.taken / c.interrupt))
+}
+
+/** 是否多阶段 Boss（用于整体强化样式） */
+function isBoss(): boolean {
+  const e = enemy()
+  return !!e && e.phaseHP.length > 1
+}
+
+/**
+ * 变体主题色：注入 --tint 自定义属性，让头像边框与敌人名字按变体着色。
+ * 玩家不用读名字也能一眼分辨「狂暴（红）/ 巨化（紫）/ 迅捷（青）/ 精英（金）」。
+ */
+const tintStyle = computed<Record<string, string> | undefined>(() => {
+  const t = enemy()?.tint
+  return t ? { '--tint': t } : undefined
+})
 
 const warning = ref(false)
 let timer = 0
@@ -50,12 +108,20 @@ watch(
 </script>
 
 <template>
-  <div class="enemy-panel panel" :class="{ 'enemy-warning': warning }">
+  <div
+    class="enemy-panel panel"
+    :class="{ 'enemy-warning': warning, 'enemy-boss': isBoss(), 'enemy-charging': !!enemy()?.charging }"
+    :style="tintStyle"
+  >
     <template v-if="enemy()">
       <div class="enemy-avatar" :class="{ 'enemy-frozen': enemy()!.frozen > 0 }">
-        <span class="enemy-icon">{{ enemy()!.icon }}</span>
-        <span v-if="enemy()!.frozen > 0" class="frozen-badge">❄ 冻结{{ enemy()!.frozen }}</span>
-        <span v-if="enemy()!.stunned > 0" class="stun-badge">💫 眩晕{{ enemy()!.stunned }}</span>
+        <img class="enemy-icon" :src="iconUrl(enemy()!.iconId)" :alt="enemy()!.display" draggable="false" />
+        <span v-if="enemy()!.frozen > 0" class="frozen-badge">
+          <img :src="ICON.freeze" alt="" aria-hidden="true" draggable="false" />冻结 {{ enemy()!.frozen }}
+        </span>
+        <span v-if="enemy()!.stunned > 0" class="stun-badge">
+          <img :src="ICON.stun" alt="" aria-hidden="true" draggable="false" />眩晕 {{ enemy()!.stunned }}
+        </span>
       </div>
       <div class="enemy-info">
         <div class="enemy-name-row">
@@ -66,11 +132,25 @@ watch(
           <div class="hp-fill" :style="{ width: `${Math.max(0, (enemy()!.hp / enemy()!.phaseMaxHp) * 100)}%` }"></div>
           <div class="hp-gloss" aria-hidden="true"></div>
           <div class="hp-ticks" aria-hidden="true"></div>
-          <span class="hp-text">{{ Math.max(0, enemy()!.hp) }}/{{ enemy()!.phaseMaxHp }}</span>
+          <span class="hp-text num">{{ Math.max(0, enemy()!.hp) }}/{{ enemy()!.phaseMaxHp }}</span>
         </div>
         <div class="enemy-status-row">
-          <span v-if="enemy()!.burn" class="status-badge burn">🔥 燃烧 {{ enemy()!.burn?.turns }}</span>
-          <span v-if="enemy()!.poison" class="status-badge poison">☠️ 中毒 {{ enemy()!.poison?.turns }}</span>
+          <span v-if="enemy()!.burn" class="status-badge burn">
+            <img :src="ICON.burn" alt="" aria-hidden="true" draggable="false" />燃烧 {{ enemy()!.burn?.turns }}
+          </span>
+          <span v-if="enemy()!.poison" class="status-badge poison">
+            <img :src="ICON.poison" alt="" aria-hidden="true" draggable="false" />中毒 {{ enemy()!.poison?.turns }}
+          </span>
+        </div>
+        <!-- 蓄力：Boss 正在憋大招，抢输出打断是唯一解（5.4 蓄力—打断机制） -->
+        <div v-if="enemy()!.charging" class="charge-row">
+          <span class="charge-tag">蓄力</span>
+          <div class="charge-track">
+            <div class="charge-fill" :style="{ width: `${chargeRatio() * 100}%` }"></div>
+          </div>
+          <span class="charge-text num">
+            打断 {{ Math.min(enemy()!.charging!.taken, enemy()!.charging!.interrupt) }}/{{ enemy()!.charging!.interrupt }}
+          </span>
         </div>
         <!-- 行动意图：移动端没有 hover，直接写明敌人下次行动会做什么 -->
         <div class="enemy-intent">
@@ -83,14 +163,14 @@ watch(
         :class="{ danger: enemy()!.countdown <= 1 }"
         :style="{ '--cd': `${cdRatio() * 360}deg` }"
       >
-        <span class="countdown-num">{{ enemy()!.countdown }}</span>
+        <span class="countdown-num num">{{ enemy()!.countdown }}</span>
         <span class="countdown-label">行动</span>
       </div>
     </template>
     <template v-else>
       <!-- 教学 1-1：无敌人，显示目标进度（REQ-TUTO-002） -->
       <div class="tutorial-goal">
-        <span class="goal-icon">🎯</span>
+        <img class="goal-icon" :src="ICON.target" alt="" aria-hidden="true" draggable="false" />
         <span class="goal-text font-title">训练目标 · 完成 {{ TUTORIAL_MATCH_TARGET }} 次消除</span>
         <span class="goal-progress">
           <span
@@ -102,21 +182,47 @@ watch(
         </span>
       </div>
     </template>
+
+    <!-- 教程提示：内联在面板底部（REQ-TUTO-001 无强制弹窗，且不额外占用棋盘高度） -->
+    <div v-if="guide" class="guide-row">
+      <img :src="ICON.tip" alt="" aria-hidden="true" draggable="false" />
+      <span>{{ guide }}</span>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .enemy-panel {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  margin: 8px 10px 4px;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  margin: 0 var(--sp-4);
   position: relative;
   overflow: hidden;
   background:
     radial-gradient(ellipse at 8% 0%, rgba(255, 90, 60, 0.12), transparent 58%),
     var(--bg-panel);
+}
+
+/* 教程提示行：占满一行独立成行（flex-basis 100% 触发换行），不挤压主信息 */
+.guide-row {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid rgba(60, 167, 255, 0.22);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: #bcd9ff;
+}
+.guide-row img {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 /* 顶部一道敌方色描边，强化"敌方区域"的语义 */
 .enemy-panel::before {
@@ -145,7 +251,7 @@ watch(
   background:
     radial-gradient(circle at 35% 30%, rgba(255, 120, 90, 0.35), transparent 62%),
     radial-gradient(circle at 50% 60%, #3a2130, #1a1018);
-  border: 2px solid rgba(255, 90, 60, 0.55);
+  border: 2px solid var(--tint, rgba(255, 90, 60, 0.55));
   box-shadow: 0 0 14px rgba(255, 90, 60, 0.28), inset 0 0 12px rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
@@ -153,7 +259,9 @@ watch(
   flex-shrink: 0;
 }
 .enemy-icon {
-  font-size: 32px;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
 }
 .enemy-frozen {
@@ -166,11 +274,20 @@ watch(
   bottom: -8px;
   left: 50%;
   transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   font-size: 10px;
   background: rgba(0, 0, 0, 0.7);
   border-radius: 8px;
   padding: 1px 6px;
   white-space: nowrap;
+}
+.frozen-badge img,
+.stun-badge img {
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
 }
 
 .enemy-info {
@@ -184,7 +301,7 @@ watch(
 }
 .enemy-name {
   font-size: 17px;
-  color: #ffd9d0;
+  color: var(--tint, #ffd9d0);
 }
 .enemy-phase {
   font-size: 11px;
@@ -274,14 +391,101 @@ watch(
   text-overflow: ellipsis;
 }
 .status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
   font-size: 10px;
-  padding: 2px 7px;
+  padding: 2px 7px 2px 3px;
   border-radius: 8px;
   background: rgba(0, 0, 0, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
+.status-badge img {
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+}
 .status-badge.burn { color: #ff9d85; }
 .status-badge.poison { color: #b58bff; }
+
+/* ============================================================
+ * 蓄力—打断（Boss 战核心张力，5.4）
+ * 进度条 = 玩家已累计造成的打断伤害；填满即打断
+ * ============================================================ */
+.charge-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+}
+.charge-tag {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  color: #1a0c06;
+  background: linear-gradient(180deg, #ffd98a, #f0a03c);
+  border-radius: 6px;
+  padding: 1px 6px;
+  animation: charge-blink 0.7s ease-in-out infinite;
+}
+.charge-track {
+  flex: 1;
+  min-width: 0;
+  height: 7px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #2c1a22, #170d13);
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.charge-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #ffb347, #ff5a3c);
+  box-shadow: 0 0 8px rgba(255, 120, 60, 0.8);
+  transition: width 0.28s ease;
+}
+.charge-text {
+  flex-shrink: 0;
+  font-size: 9.5px;
+  color: #ffcf9a;
+}
+@keyframes charge-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* 蓄力中：整个敌方面板转为危险色脉冲，提示"要放大招了" */
+.enemy-charging {
+  border-color: rgba(255, 160, 60, 0.85);
+  animation: charge-pulse 0.9s ease-in-out infinite;
+}
+@keyframes charge-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 rgba(255, 140, 50, 0); }
+  50% { box-shadow: inset 0 0 26px rgba(255, 140, 50, 0.22); }
+}
+.enemy-charging .countdown {
+  background: conic-gradient(
+    from -90deg,
+    #ffb347 0deg,
+    #ffb347 var(--cd),
+    rgba(255, 255, 255, 0.08) var(--cd),
+    rgba(255, 255, 255, 0.08) 360deg
+  );
+}
+.enemy-charging .countdown-num {
+  color: #ffc46b;
+  text-shadow: 0 0 10px rgba(255, 170, 70, 0.9);
+}
+
+/* Boss：血条更厚、头像更大一圈，与普通怪拉开体量感 */
+.enemy-boss .enemy-avatar {
+  width: 66px;
+  height: 66px;
+  border-width: 3px;
+}
+.enemy-boss .enemy-name { font-size: 18px; }
+.enemy-boss .hp-bar { height: 18px; }
+.enemy-boss .hp-text { line-height: 18px; }
 
 /* 倒计时：≤1 高亮警告（REQ-ENEMY-001） */
 .countdown {
@@ -354,7 +558,11 @@ watch(
   gap: 10px;
   padding: 6px 0;
 }
-.goal-icon { font-size: 24px; }
+.goal-icon {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+}
 .goal-text { font-size: 16px; color: var(--gold-light); }
 .goal-progress {
   display: flex;

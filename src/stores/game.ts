@@ -19,7 +19,8 @@ import {
   calcSkillDamage,
   calcWaveDamage,
   createEnemyState,
-  enemyDead
+  enemyDead,
+  resolvePattern
 } from '@/core/battle'
 import {
   ANIM,
@@ -31,10 +32,12 @@ import {
   TUTORIAL_MATCH_TARGET
 } from '@/config/constants'
 import { getLevel } from '@/config/levels'
+import { getEnemy } from '@/config/enemies'
 import { getRelic, RELICS } from '@/config/relics'
 import { getHero, HEROES } from '@/config/heroes'
 import type {
   CutIn,
+  DotEffect,
   ElementType,
   EnemyState,
   FloatText,
@@ -48,7 +51,9 @@ import type {
 } from '@/types'
 import { loadSave, writeSave } from '@/utils/storage'
 import { audio } from '@/utils/audio'
+import { preloadBoardIcons } from '@/utils/icons'
 import { sampleN, sleep } from '@/utils/anim'
+import type { IconId } from '@/config/iconIds'
 
 export type Screen = 'home' | 'team' | 'levels' | 'battle'
 export type BattlePhase = 'fighting' | 'relicSelect' | 'result'
@@ -66,6 +71,9 @@ interface BattleRuntime {
   maxComboInBattle: number
   totalDamage: number
   woodGemCleared: number
+  /** 玩家身上的灼烧 / 中毒（Boss 施加，回合结束结算，REQ-ENEMY-002） */
+  playerBurn: DotEffect | null
+  playerPoison: DotEffect | null
   canInteract: boolean
   paused: boolean
   phase: BattlePhase
@@ -101,6 +109,8 @@ export const useGameStore = defineStore('game', () => {
     maxComboInBattle: 0,
     totalDamage: 0,
     woodGemCleared: 0,
+    playerBurn: null,
+    playerPoison: null,
     canInteract: false,
     paused: false,
     phase: 'fighting',
@@ -152,7 +162,9 @@ export const useGameStore = defineStore('game', () => {
         : '干得漂亮！'
     }
     if (lv.tutorial === 'intro4') return '提示：4 个相同宝石连成一线会生成技能石，点击它可直接释放！'
-    if (lv.tutorial === 'intro5') return '提示：5 连生成终极技能石；Boss 拥有两个阶段，小心它的狂怒反扑！'
+    if (lv.tutorial === 'intro5') {
+      return '提示：Boss 蓄力时会出现进度条，抢输出把进度打满即可打断它的大招！'
+    }
     return null
   })
 
@@ -179,11 +191,38 @@ export const useGameStore = defineStore('game', () => {
       maxComboInBattle: battle.maxComboInBattle,
       totalDamage: battle.totalDamage,
       woodGemCleared: battle.woodGemCleared,
+      playerBurn: battle.playerBurn ? { ...battle.playerBurn } : null,
+      playerPoison: battle.playerPoison ? { ...battle.playerPoison } : null,
       // 遗物三选一属于"进行中战斗"的一部分：记录阶段与候选，恢复后可继续选择
       phase: battle.phase === 'relicSelect' ? 'relicSelect' : 'fighting',
       relicOffers: battle.phase === 'relicSelect' ? [...relicOffers.value] : []
     }
     persist()
+  }
+
+  /**
+   * 快照敌人状态规整（REQ-SAVE-002 兼容性）：
+   * - iconId 按配置表重新派生，避免旧存档残留失效值
+   * - pattern / patternIndex / charging / phaseAttack / phaseCountdown 为新增字段，
+   *   旧存档缺失时按当前阶段从配置表补齐，保证恢复后可继续正常战斗
+   */
+  function normalizeEnemy(raw: EnemyState): EnemyState {
+    const cfg = getEnemy(raw.configId)
+    const phaseAttack = raw.phaseAttack ?? cfg.phaseAttack ?? cfg.phaseHP.map(() => cfg.attack)
+    const phaseCountdown =
+      raw.phaseCountdown ?? cfg.phaseCountdown ?? cfg.phaseHP.map(() => cfg.countdown)
+    return {
+      ...raw,
+      iconId: cfg.iconId,
+      tint: raw.tint ?? null,
+      phaseAttack,
+      phaseCountdown,
+      attack: raw.attack ?? phaseAttack[raw.phase - 1] ?? cfg.attack,
+      baseCountdown: raw.baseCountdown ?? phaseCountdown[raw.phase - 1] ?? cfg.countdown,
+      pattern: raw.pattern ?? resolvePattern(cfg, raw.phase),
+      patternIndex: raw.patternIndex ?? 0,
+      charging: raw.charging ?? null
+    }
   }
 
   // ================================================================
@@ -204,9 +243,15 @@ export const useGameStore = defineStore('game', () => {
     }, ANIM.floatText + 100)
   }
 
-  function showCutIn(heroIcon: string, heroName: string, skillName: string, color: string): void {
+  function showCutIn(
+    heroIconId: IconId,
+    skillIconId: IconId,
+    heroName: string,
+    skillName: string,
+    color: string
+  ): void {
     const id = uid++
-    cutIn.value = { id, heroIcon, heroName, skillName, color }
+    cutIn.value = { id, heroIconId, skillIconId, heroName, skillName, color }
     setTimeout(() => {
       if (cutIn.value?.id === id) cutIn.value = null
     }, ANIM.cutIn + 150)
@@ -230,6 +275,7 @@ export const useGameStore = defineStore('game', () => {
   function startLevel(levelId: number): void {
     const level = getLevel(levelId)
     audio.unlock()
+    preloadBoardIcons() // 预加载元素宝石与技能石标记，避免棋盘首帧闪空
     battle.level = level
     battle.waveIndex = 0
     battle.relics = []
@@ -238,6 +284,8 @@ export const useGameStore = defineStore('game', () => {
     battle.maxComboInBattle = 0
     battle.totalDamage = 0
     battle.woodGemCleared = 0
+    battle.playerBurn = null
+    battle.playerPoison = null
     battle.playerHP = PLAYER_MAX_HP
     battle.playerShield = 0
     battle.result = null
@@ -293,7 +341,8 @@ export const useGameStore = defineStore('game', () => {
     battle.turnCount = snap.turnCount
     battle.playerHP = snap.playerHP
     battle.playerShield = snap.playerShield
-    battle.enemy = snap.enemy
+    // 图标与新增字段随配置表更新派生（旧存档可能残留历史值 / 缺少行动轮换字段）
+    battle.enemy = snap.enemy ? normalizeEnemy(snap.enemy) : null
     battle.relics = [...snap.relics]
     battle.board = GameBoard.fromGrid(snap.grid)
     battle.boardSeq++
@@ -301,6 +350,8 @@ export const useGameStore = defineStore('game', () => {
     battle.maxComboInBattle = snap.maxComboInBattle
     battle.totalDamage = snap.totalDamage
     battle.woodGemCleared = snap.woodGemCleared
+    battle.playerBurn = snap.playerBurn ? { ...snap.playerBurn } : null
+    battle.playerPoison = snap.playerPoison ? { ...snap.playerPoison } : null
     battle.result = null
     battle.paused = false
     battle.tutorialProgress = level.tutorial === 'match' ? snap.turnCount : 0
@@ -326,7 +377,7 @@ export const useGameStore = defineStore('game', () => {
   // 伤害 / 治疗结算
   // ================================================================
 
-  /** 玩家对敌人造成伤害（含 Boss 阶段转换，REQ-ENEMY-003） */
+  /** 玩家对敌人造成伤害（含 Boss 阶段转换，REQ-ENEMY-003；蓄力打断见 5.4） */
   async function dealDamageToEnemy(dmg: number, kind: FloatText['kind']): Promise<void> {
     const enemy = battle.enemy
     if (!enemy || dmg <= 0) return
@@ -334,6 +385,14 @@ export const useGameStore = defineStore('game', () => {
     battle.totalDamage += dmg
     addFloat(`-${dmg}`, kind)
     audio.play(kind === 'skill' ? 'skill' : 'combo', Math.min(battle.combo, 8))
+
+    // 蓄力打断：蓄力期间累计承受伤害达到阈值即打断（Boss 蓄力失败并吃反噬）
+    if (enemy.charging) {
+      enemy.charging.taken += dmg
+      if (enemy.charging.taken >= enemy.charging.interrupt) {
+        await interruptCharge(enemy)
+      }
+    }
 
     // Boss 阶段转换：血量耗尽且仍有下一阶段
     if (advanceEnemyPhase(enemy)) {
@@ -347,6 +406,69 @@ export const useGameStore = defineStore('game', () => {
         damagePlayer(enemy.phaseBlastDamage)
       }
     }
+  }
+
+  /**
+   * 打断蓄力（Boss 战核心正反馈）：清空蓄力、播放打击反馈并结算反噬伤害。
+   * 先置空 charging 再结算反噬，避免反噬伤害递归触发打断判定。
+   */
+  async function interruptCharge(enemy: EnemyState): Promise<void> {
+    const charge = enemy.charging
+    if (!charge) return
+    enemy.charging = null
+    addFloat(`打断「${charge.release}」！`, 'info')
+    doShake()
+    doFlash()
+    audio.play('skill')
+    await sleep(ANIM.enemyWarn)
+    if (charge.recoil > 0) {
+      addFloat(`${enemy.display} 反噬 -${charge.recoil}`, 'crit')
+      await dealDamageToEnemy(charge.recoil, 'crit')
+    }
+  }
+
+  /** 敌人回复生命（汲取类行动），不超过当前阶段上限 */
+  function healEnemy(amount: number): void {
+    const enemy = battle.enemy
+    if (!enemy || amount <= 0 || enemy.hp <= 0) return
+    const healed = Math.min(enemy.phaseMaxHp - enemy.hp, amount)
+    if (healed <= 0) return
+    enemy.hp += healed
+    addFloat(`${enemy.display} 回复 ${healed}`, 'heal')
+  }
+
+  /** 给玩家施加灼烧/中毒（可叠加层数，持续时间取较长者，REQ-HERO-101 同规则） */
+  function applyPlayerDot(kind: 'burn' | 'poison', effect: DotEffect): void {
+    const cur = kind === 'burn' ? battle.playerBurn : battle.playerPoison
+    const merged: DotEffect = {
+      damage: (cur?.damage ?? 0) + effect.damage,
+      turns: Math.max(cur?.turns ?? 0, effect.turns)
+    }
+    if (kind === 'burn') battle.playerBurn = merged
+    else battle.playerPoison = merged
+    addFloat(kind === 'burn' ? '你被灼烧！' : '你中毒了！', 'info')
+  }
+
+  /**
+   * 回合结束结算玩家身上的灼烧/中毒（无视护盾，直接扣血）。
+   * @returns 玩家是否因此死亡
+   */
+  function tickPlayerStatus(): boolean {
+    let died = false
+    const kinds: ('burn' | 'poison')[] = ['burn', 'poison']
+    for (const kind of kinds) {
+      const st = kind === 'burn' ? battle.playerBurn : battle.playerPoison
+      if (!st) continue
+      battle.playerHP = Math.max(0, battle.playerHP - st.damage)
+      addFloat(`-${st.damage} (${kind === 'burn' ? '灼烧' : '中毒'})`, 'damage')
+      st.turns--
+      if (st.turns <= 0) {
+        if (kind === 'burn') battle.playerBurn = null
+        else battle.playerPoison = null
+      }
+      if (battle.playerHP <= 0) died = true
+    }
+    return died
   }
 
   /** 敌人对玩家造成伤害（护盾优先抵扣，REQ-HERO-103） */
@@ -386,7 +508,13 @@ export const useGameStore = defineStore('game', () => {
     const hero = leader.value
     const skill: SkillEffect = which === 'small' ? hero.skill4 : hero.skill5
     // 技能特写 0.5 秒，不阻塞操作（REQ-FEEL-002）
-    showCutIn(hero.icon, hero.name, skill.name, hero.color)
+    showCutIn(
+      hero.iconId,
+      which === 'small' ? hero.skill4IconId : hero.skill5IconId,
+      hero.name,
+      skill.name,
+      hero.color
+    )
     audio.play('skill')
     await sleep(150) // 让特写先入场
 
@@ -400,13 +528,13 @@ export const useGameStore = defineStore('game', () => {
     })
     // 遗物/被动协同生效时飘字说明加成来源（REQ-FEEL-004）
     if (hero.element === 'fire' && heartOfFlame) {
-      addFloat('❤️‍🔥 火焰之心：火技能伤害 +30%', 'info')
+      addFloat('火焰之心：火技能伤害 +30%', 'info')
     }
     if (hero.element === 'fire' && firePassive) {
-      addFloat('🐉 炎龙骑士支援：火技能伤害 +15%', 'info')
+      addFloat('炎龙骑士支援：火技能伤害 +15%', 'info')
     }
     if (desperate) {
-      addFloat('⚔️ 绝境反击：全部伤害 +50%', 'info')
+      addFloat('绝境反击：全部伤害 +50%', 'info')
     }
     if (dmg > 0) await dealDamageToEnemy(dmg, 'skill')
     if (skill.heal) healPlayer(skill.heal)
@@ -586,7 +714,7 @@ export const useGameStore = defineStore('game', () => {
   }
 
   /**
-   * 回合结束：被动回血 → 幸运骰子 → 敌人阶段 → 冻结递减 → 死局洗牌 → 存档
+   * 回合结束：被动回血 → 玩家持续伤害 → 幸运骰子 → 敌人阶段 → 冻结递减 → 死局洗牌 → 存档
    */
   async function endOfTurn(): Promise<void> {
     battle.turnCount++
@@ -594,6 +722,12 @@ export const useGameStore = defineStore('game', () => {
     // 森林德鲁伊支援被动：每回合结束回复 3 生命
     if (supports.value.some((h) => h.passiveId === 'healPerTurn')) {
       healPlayer(3)
+    }
+
+    // 玩家身上的灼烧/中毒结算（Boss 施加，REQ-ENEMY-002）
+    if (tickPlayerStatus()) {
+      finishBattle('defeat')
+      return
     }
 
     // 幸运骰子遗物：20% 概率不消耗回合（REQ-RELIC 清单）
@@ -682,47 +816,119 @@ export const useGameStore = defineStore('game', () => {
 
     enemy.countdown--
     if (enemy.countdown <= 0) {
-      await enemyAct()
-      if (battle.playerHP > 0) enemy.countdown = enemy.baseCountdown
+      // 蓄力招式可指定独立窗口（window），避免二阶段加速后打断窗口过短而不公平
+      const window = await enemyAct()
+      if (battle.playerHP > 0) enemy.countdown = window ?? enemy.baseCountdown
     }
   }
 
-  /** 敌人行动（REQ-ENEMY-002：普通攻击/技能/棋盘干扰；前摇 0.5 秒预警） */
-  async function enemyAct(): Promise<void> {
+  /** 冻结棋盘随机 size×size 区域（REQ-ENEMY-101），返回被冻结宝石数 */
+  function applyFreezeBoard(size: number, turns: number): number {
+    const r = Math.floor(Math.random() * (8 - size + 1))
+    const c = Math.floor(Math.random() * (8 - size + 1))
+    let count = 0
+    for (let dr = 0; dr < size; dr++) {
+      for (let dc = 0; dc < size; dc++) {
+        const cell = battle.board?.grid[r + dr]?.[c + dc]
+        if (cell) {
+          cell.frozen = turns
+          count++
+        }
+      }
+    }
+    return count
+  }
+
+  /**
+   * 敌人行动（REQ-ENEMY-002 / 5.4 Boss 战机制；前摇 0.5 秒预警）
+   * 优先级：蓄力释放 > 行动轮换 > 旧版单技能（未配置轮换的小怪）
+   * @returns 本次行动后要使用的倒计时（null = 用 baseCountdown）；蓄力时返回 window
+   */
+  async function enemyAct(): Promise<number | null> {
     const enemy = battle.enemy!
     // 预警动画（REQ-FEEL-005：行动前 0.5 秒预警）
     enemyWarn.value++
     await sleep(ANIM.enemyWarn)
-    if (battle.playerHP <= 0) return
+    if (battle.playerHP <= 0) return null
 
+    // ① 蓄力完成：释放大招（蓄力期间未被玩家打断）
+    if (enemy.charging) {
+      const charge = enemy.charging
+      enemy.charging = null
+      addFloat(`${enemy.display} 释放「${charge.release}」！`, 'info')
+      doFlash()
+      doShake()
+      damagePlayer(charge.damage)
+      await sleep(200)
+      return null
+    }
+
+    // ② 行动轮换（Boss / 精英）
+    if (enemy.pattern.length > 0) {
+      const action = enemy.pattern[enemy.patternIndex % enemy.pattern.length]
+      enemy.patternIndex = (enemy.patternIndex + 1) % enemy.pattern.length
+      addFloat(`${enemy.display}「${action.name}」`, 'info')
+      let chargeWindow: number | null = null
+      switch (action.kind) {
+        case 'attack':
+          damagePlayer(enemy.attack)
+          break
+        case 'freezeBoard': {
+          const count = applyFreezeBoard(action.size, action.turns)
+          addFloat(`冻结了 ${count} 颗宝石！`, 'info')
+          if (action.damage) damagePlayer(action.damage)
+          break
+        }
+        case 'poison':
+          damagePlayer(action.damage)
+          if (battle.playerHP > 0) applyPlayerDot('poison', action.poison)
+          break
+        case 'burn':
+          damagePlayer(action.damage)
+          if (battle.playerHP > 0) applyPlayerDot('burn', action.burn)
+          break
+        case 'drain':
+          damagePlayer(action.damage)
+          healEnemy(action.heal)
+          break
+        case 'charge':
+          enemy.charging = {
+            name: action.name,
+            release: action.release,
+            damage: action.releaseDamage,
+            interrupt: action.interrupt,
+            recoil: action.recoil ?? 0,
+            taken: 0
+          }
+          chargeWindow = action.window ?? null
+          addFloat(`蓄力中！累计造成 ${action.interrupt} 点伤害可打断`, 'info')
+          doShake()
+          break
+      }
+      await sleep(200)
+      return chargeWindow
+    }
+
+    // ③ 旧版单技能（未配置 patterns 的普通小怪）
     switch (enemy.skill.type) {
       case 'freezeBoard': {
         // 冰霜幽灵：冻结随机 2×2 区域（REQ-ENEMY-101）
-        const size = enemy.skill.size
-        const r = Math.floor(Math.random() * (8 - size + 1))
-        const c = Math.floor(Math.random() * (8 - size + 1))
-        let count = 0
-        for (let dr = 0; dr < size; dr++) {
-          for (let dc = 0; dc < size; dc++) {
-            const cell = battle.board?.grid[r + dr]?.[c + dc]
-            if (cell) {
-              cell.frozen = GEM_FROZEN_TURNS
-              count++
-            }
-          }
-        }
+        const count = applyFreezeBoard(enemy.skill.size, GEM_FROZEN_TURNS)
         addFloat(`${enemy.display} 冻结了 ${count} 颗宝石！`, 'info')
         break
       }
       case 'poisonAttack': {
         damagePlayer(enemy.attack)
-        // 玩家中毒状态（敌人配置表预留）
+        if (battle.playerHP > 0) {
+          applyPlayerDot('poison', { damage: enemy.skill.damage, turns: enemy.skill.turns })
+        }
         break
       }
       default:
         damagePlayer(enemy.attack)
     }
     await sleep(200)
+    return null
   }
 
   // ================================================================

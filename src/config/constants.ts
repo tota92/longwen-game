@@ -2,6 +2,7 @@
  * 全局常量配置（REQ-CFG-001：数值不写死在业务代码中）
  */
 import type { ElementType } from '@/types'
+import type { IconId } from './iconIds'
 
 /** 棋盘尺寸 8×8（REQ-BOARD-001） */
 export const BOARD_SIZE = 8
@@ -9,16 +10,29 @@ export const BOARD_SIZE = 8
 /** 六种元素（REQ-BOARD-001） */
 export const ELEMENTS: ElementType[] = ['fire', 'water', 'wood', 'light', 'dark', 'thunder']
 
-/** 元素展示信息 */
-export const ELEMENT_INFO: Record<ElementType, { name: string; icon: string; color: string }> = {
-  fire: { name: '火', icon: '🔥', color: '#ff5a3c' },
-  water: { name: '水', icon: '💧', color: '#3ca7ff' },
-  wood: { name: '木', icon: '🌿', color: '#4cd964' },
-  light: { name: '光', icon: '☀️', color: '#f0b429' },
-  dark: { name: '暗', icon: '🌑', color: '#a06bff' },
+/** 元素展示信息（图标为 256×256 透明 PNG，见 public/icons/） */
+export const ELEMENT_INFO: Record<
+  ElementType,
+  { name: string; iconId: IconId; color: string }
+> = {
+  fire: { name: '火', iconId: 'el_fire', color: '#ff5a3c' },
+  water: { name: '水', iconId: 'el_water', color: '#3ca7ff' },
+  wood: { name: '木', iconId: 'el_wood', color: '#4cd964' },
+  light: { name: '光', iconId: 'el_light', color: '#f0b429' },
+  dark: { name: '暗', iconId: 'el_dark', color: '#a06bff' },
   // 雷改为电青色：原设计与"光"同为黄色（#ffd94c / #ffe135），棋盘上难以区分
-  thunder: { name: '雷', icon: '⚡', color: '#2cc3e6' }
+  thunder: { name: '雷', iconId: 'el_thunder', color: '#2cc3e6' }
 }
+
+/** 特殊宝石对应的覆盖标记图标（叠加于宝石角标） */
+export const SPECIAL_MARK_ICON: Record<'small' | 'ultimate' | 'bomb', IconId> = {
+  small: 'ov_small',
+  ultimate: 'ov_ultimate',
+  bomb: 'ov_bomb'
+}
+
+/** 冻结宝石角标图标 */
+export const FROZEN_MARK_ICON: IconId = 'ov_freeze'
 
 /** 玩家初始/上限 HP */
 export const PLAYER_MAX_HP = 100

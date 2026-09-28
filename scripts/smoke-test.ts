@@ -12,6 +12,8 @@ import {
   createEnemyState,
   enemyDead
 } from '../src/core/battle'
+import { ENEMIES, ENEMY_VARIANTS } from '../src/config/enemies'
+import { LEVELS } from '../src/config/levels'
 import type { ElementType, Grid, MatchGroup, Pos } from '../src/types'
 
 let passed = 0
@@ -267,20 +269,193 @@ console.log('\n[10] Boss 阶段转换（REQ-ENEMY-003 回归）')
 // ------------------------------------------------------------------
 {
   const dragon = createEnemyState({ enemyId: 'enemy_ancient_dragon' })
-  assert(dragon.phaseHP.length === 2 && dragon.phaseMaxHp === 80, '远古巨龙：一阶段 80 血')
+  assert(dragon.phaseHP.length === 2 && dragon.phaseMaxHp === 120, '远古巨龙：一阶段 120 血')
 
   dragon.hp = 0
   const advanced = advanceEnemyPhase(dragon)
   assert(advanced && dragon.phase === 2, '血量耗尽后推进到第二阶段')
-  assert(dragon.hp === 60, '二阶段血量重置为 60')
-  // 回归点：阶段上限必须同步，否则血条按 80 计算永远显示不满
-  assert(dragon.phaseMaxHp === 60, '二阶段血量上限同步为 60（血条显示正确）')
+  assert(dragon.hp === 100, '二阶段血量重置为 100')
+  // 回归点：阶段上限必须同步，否则血条按 120 计算永远显示不满
+  assert(dragon.phaseMaxHp === 100, '二阶段血量上限同步为 100（血条显示正确）')
   assert(dragon.countdown === dragon.baseCountdown + 1, '阶段转换重置倒计时（补偿本回合递减）')
   assert(!enemyDead(dragon), '二阶段敌人不应判定为死亡')
 
   dragon.hp = 0
   assert(!advanceEnemyPhase(dragon), '最后一阶段血量耗尽后不再推进')
   assert(enemyDead(dragon), '最后一阶段血量耗尽判定为死亡')
+}
+
+// ------------------------------------------------------------------
+console.log('\n[11] Boss 行动轮换与蓄力机制（5.4 回归）')
+// ------------------------------------------------------------------
+{
+  const dragon = createEnemyState({ enemyId: 'enemy_ancient_dragon' })
+  assert(dragon.pattern.length === 3, '远古巨龙一阶段行动轮换含 3 招')
+  assert(dragon.pattern[0].kind === 'charge', '蓄力大招排在轮换首位（保证每阶段必触发）')
+  assert(dragon.attack === 14 && dragon.phaseAttack[1] === 17, '阶段攻击力表 14 → 17')
+  assert(dragon.patternIndex === 0 && dragon.charging === null, '初始轮换游标为 0 且未蓄力')
+  const firstCharge = dragon.pattern[0]
+  assert(
+    firstCharge.kind === 'charge' && firstCharge.window === 3 && firstCharge.interrupt > 0,
+    '蓄力招式带独立打断窗口（window=3）与打断阈值'
+  )
+
+  // 阶段推进：切换轮换、攻击力、倒计时，并清除蓄力
+  dragon.charging = {
+    name: '龙焰蓄能',
+    release: '灭世龙焰',
+    damage: 30,
+    interrupt: 38,
+    recoil: 14,
+    taken: 0
+  }
+  dragon.hp = 0
+  advanceEnemyPhase(dragon)
+  assert(dragon.attack === 17, '二阶段攻击力提升到 17（狂怒）')
+  assert(dragon.baseCountdown === 2, '二阶段倒计时缩短为 2（狂怒加速）')
+  assert(dragon.pattern.some((a) => a.kind === 'burn'), '二阶段轮换加入灼烧招式')
+  assert(dragon.patternIndex === 0, '阶段转换重置轮换游标')
+  assert(dragon.charging === null, '阶段转换清除进行中的蓄力')
+
+  // 轮换回退：只配置一套轮换的敌人（幼龙），二阶段沿用同一套
+  const whelp = createEnemyState({ enemyId: 'enemy_dragon_whelp' })
+  assert(whelp.pattern[0].kind === 'charge', '幼龙开局即蓄力（教学）')
+  whelp.hp = 0
+  advanceEnemyPhase(whelp)
+  assert(
+    whelp.pattern.length === 2 && whelp.pattern.some((a) => a.kind === 'charge'),
+    '幼龙仅配置一套轮换，二阶段自动沿用'
+  )
+
+  // 未配置 patterns 的小怪退化为空轮换（走旧版普攻分支）
+  const slime = createEnemyState({ enemyId: 'enemy_slime' })
+  assert(slime.pattern.length === 0, '史莱姆未配置轮换，退化为普通攻击')
+
+  // 变体倍率同时作用于各阶段攻击力与 HP
+  const eliteDragon = createEnemyState({
+    enemyId: 'enemy_ancient_dragon',
+    variant: { ...ENEMY_VARIANTS.elite }
+  })
+  assert(eliteDragon.attack === Math.floor(14 * 1.4), '精英变体作用于阶段攻击力')
+  assert(eliteDragon.phaseMaxHp === Math.floor(120 * 1.8), '精英变体作用于阶段 HP')
+  assert(eliteDragon.display === '精英·远古巨龙', '变体前缀写入显示名')
+  assert(eliteDragon.tint === ENEMY_VARIANTS.elite.tint, '变体主题色写入状态（UI 区分用）')
+}
+
+// ------------------------------------------------------------------
+console.log('\n[12] 敌人变体（关卡差异化的基础）')
+// ------------------------------------------------------------------
+{
+  const base = createEnemyState({ enemyId: 'enemy_slime' })
+  const berserk = createEnemyState({ enemyId: 'enemy_slime', variant: { ...ENEMY_VARIANTS.berserk } })
+  const giant = createEnemyState({ enemyId: 'enemy_slime', variant: { ...ENEMY_VARIANTS.giant } })
+  const swift = createEnemyState({ enemyId: 'enemy_slime', variant: { ...ENEMY_VARIANTS.swift } })
+
+  assert(berserk.attack > base.attack * 1.5 && berserk.phaseMaxHp < giant.phaseMaxHp, '狂暴：攻击高、血量不厚（速杀定位）')
+  assert(giant.phaseMaxHp === Math.floor(30 * 2.6) && giant.attack === base.attack, '巨化：血量 2.6 倍、攻击不变（持久定位）')
+  assert(swift.countdown === base.countdown - 1, '迅捷：初始倒计时 -1（出手更快）')
+  assert(base.tint === null && base.display === '史莱姆', '普通敌人无变体前缀与主题色')
+
+  // 倒计时偏移与冰霜女巫支援被动（+1）叠加，且不会低于 1
+  const swiftWithCdUp = createEnemyState(
+    { enemyId: 'enemy_slime', variant: { ...ENEMY_VARIANTS.swift } },
+    { enemyCdUp: true }
+  )
+  assert(swiftWithCdUp.countdown === base.countdown, '迅捷(-1) 与冰霜女巫被动(+1) 相互抵消')
+  const swiftLizard = createEnemyState({
+    enemyId: 'enemy_fire_lizard',
+    variant: { ...ENEMY_VARIANTS.swift }
+  })
+  assert(swiftLizard.countdown === 1, '迅捷火蜥蜴倒计时 2→1，且被下限保护为 1')
+}
+
+// ------------------------------------------------------------------
+console.log('\n[13] 关卡设计不变量（设计规则的可执行校验）')
+// ------------------------------------------------------------------
+{
+  // 关卡 ID 唯一且连续
+  const ids = LEVELS.map((l) => l.id)
+  assert(new Set(ids).size === ids.length, '关卡 ID 无重复')
+  assert(ids.every((id, i) => id === i + 1), '关卡 ID 从 1 连续递增')
+
+  // 所有波次引用的敌人 ID 必须存在
+  const badRefs = LEVELS.flatMap((l) => l.waves)
+    .map((w) => w.enemyId)
+    .filter((id) => !ENEMIES.some((e) => e.id === id))
+  assert(badRefs.length === 0, `所有波次敌人引用有效（异常 ${badRefs.length} 处）`)
+
+  // 章节与章内序号自洽
+  const chapterOk = LEVELS.every((l) => {
+    const sameChapter = LEVELS.filter((x) => x.chapter === l.chapter)
+    return sameChapter[l.indexInChapter - 1]?.id === l.id
+  })
+  assert(chapterOk, 'indexInChapter 与章节分组自洽')
+
+  // 每关必须有名字与正整数宝石攻击力
+  assert(
+    LEVELS.every((l) => l.name.length > 0 && l.gemPower > 0),
+    '每关都有名称与合法宝石攻击力'
+  )
+
+  // 设计原则 1：禁止相邻关卡同质（波次构成完全相同）
+  const sig = (l: (typeof LEVELS)[number]) =>
+    l.waves.map((w) => `${w.enemyId}#${w.variant?.namePrefix ?? ''}`).join('>')
+  const duplicates: number[] = []
+  for (let i = 1; i < LEVELS.length; i++) {
+    if (LEVELS[i].waves.length > 0 && sig(LEVELS[i]) === sig(LEVELS[i - 1])) {
+      duplicates.push(LEVELS[i].id)
+    }
+  }
+  assert(duplicates.length === 0, `相邻关卡无同质重复（重复 ${duplicates.join(',') || '无'}）`)
+
+  // 设计原则 3：正式 Boss 关至少 3 波，保证进 Boss 前有 2 个遗物（教学 Boss 除外）
+  const bossLevels = LEVELS.filter((l) => l.type === 'boss' && !l.tutorial)
+  assert(
+    bossLevels.length > 0 && bossLevels.every((l) => l.waves.length >= 3),
+    `正式 Boss 关波次 >= 3（进 Boss 前遗物 >= 2）：${bossLevels.map((l) => `${l.id}关${l.waves.length}波`).join('，')}`
+  )
+
+  // 教学关配置（REQ-TUTO-002/003/004）
+  const lv1 = LEVELS[0]
+  const lv2 = LEVELS[1]
+  const lv3 = LEVELS[2]
+  assert(lv1.tutorial === 'match' && lv1.waves.length === 0, '1-1：无敌人，纯消除教学')
+  assert(lv2.tutorial === 'intro4' && lv2.ensureFourMatch === true, '1-2：四消教学且保证棋盘有四消机会')
+  assert(
+    lv3.tutorial === 'intro5' && lv3.ensureFiveMatch === true && lv3.waves.length >= 2,
+    '1-3：五消教学 + 两阶段 Boss'
+  )
+
+  // 每章最后一关必须有收束（精英或 Boss）
+  const chapters = [...new Set(LEVELS.map((l) => l.chapter))]
+  const closureOk = chapters.every((ch) => {
+    const inChapter = LEVELS.filter((l) => l.chapter === ch)
+    const last = inChapter[inChapter.length - 1]
+    return last.type === 'boss' || last.type === 'elite'
+  })
+  assert(closureOk, '每章最后一关为精英或 Boss（章节收束）')
+
+  // 章节基准：宝石攻击力随章节递增
+  assert(
+    LEVELS.filter((l) => l.chapter === 1).every((l) => l.gemPower === 2) &&
+      LEVELS.filter((l) => l.chapter === 2).every((l) => l.gemPower === 3),
+    '章节宝石攻击力基准：第一章 2 / 第二章 3'
+  )
+
+  // 变体使用情况：第一章应至少用到 4 种变体，避免"全章只有史莱姆"
+  const ch1Variants = new Set(
+    LEVELS.filter((l) => l.chapter === 1)
+      .flatMap((l) => l.waves)
+      .map((w) => w.variant?.namePrefix)
+      .filter(Boolean)
+  )
+  assert(ch1Variants.size >= 4, `第一章敌人变体种类 >= 4（实际 ${[...ch1Variants].join('/')}）`)
+
+  // 每关都有可击杀的敌人（除纯教学关）
+  assert(
+    LEVELS.every((l) => l.waves.length > 0 || l.tutorial === 'match'),
+    '除 1-1 教学关外，每关都有敌人波次'
+  )
 }
 
 // ------------------------------------------------------------------

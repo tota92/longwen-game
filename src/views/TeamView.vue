@@ -6,9 +6,13 @@
 import { useGameStore } from '@/stores/game'
 import { HEROES } from '@/config/heroes'
 import { ELEMENT_INFO } from '@/config/constants'
+import { iconUrl } from '@/utils/icons'
 import { computed } from 'vue'
 
 const store = useGameStore()
+
+/** 返回按钮图标 */
+const backIcon = iconUrl('ui_back')
 
 const sameElementBonus = computed(() => {
   const supports = store.supports
@@ -20,7 +24,9 @@ const sameElementBonus = computed(() => {
 <template>
   <div class="team-view">
     <header class="page-header">
-      <button class="back-btn" @click="store.setScreen('home')">←</button>
+      <button class="back-btn" @click="store.setScreen('home')">
+        <img :src="backIcon" alt="返回" draggable="false" />
+      </button>
       <span class="page-title font-title">英雄编队</span>
       <span class="header-space"></span>
     </header>
@@ -29,7 +35,9 @@ const sameElementBonus = computed(() => {
       <!-- 当前阵容摘要 -->
       <div class="formation-summary panel">
         <div class="formation-main">
-          <span class="formation-avatar" :style="{ borderColor: store.leader.color }">{{ store.leader.icon }}</span>
+          <span class="formation-avatar" :style="{ borderColor: store.leader.color }">
+            <img :src="iconUrl(store.leader.iconId)" :alt="store.leader.name" draggable="false" />
+          </span>
           <div class="formation-info">
             <span class="formation-name font-title">{{ store.leader.name }}</span>
             <span class="formation-role">主战 · 技能石释放者</span>
@@ -37,7 +45,7 @@ const sameElementBonus = computed(() => {
         </div>
         <div class="formation-supports">
           <div v-for="h in store.supports" :key="h.id" class="support-item">
-            <span class="support-emoji">{{ h.icon }}</span>
+            <span class="support-emoji"><img :src="iconUrl(h.iconId)" :alt="h.name" draggable="false" /></span>
             <span class="support-passive">{{ h.passiveDesc }}</span>
           </div>
         </div>
@@ -57,12 +65,14 @@ const sameElementBonus = computed(() => {
         @click="store.setLeader(h.id)"
       >
         <div class="hero-card-left">
-          <span class="hero-card-avatar" :style="{ borderColor: h.color }">{{ h.icon }}</span>
+          <span class="hero-card-avatar" :style="{ borderColor: h.color }">
+            <img :src="iconUrl(h.iconId)" :alt="h.name" draggable="false" />
+          </span>
           <div class="hero-card-basic">
             <div class="hero-card-name-row">
               <span class="hero-card-name font-title">{{ h.name }}</span>
               <span class="hero-card-el" :style="{ color: ELEMENT_INFO[h.element].color }">
-                {{ ELEMENT_INFO[h.element].icon }} {{ ELEMENT_INFO[h.element].name }}
+                <img class="el-icon" :src="iconUrl(ELEMENT_INFO[h.element].iconId)" alt="" aria-hidden="true" draggable="false" />{{ ELEMENT_INFO[h.element].name }}
               </span>
             </div>
             <span class="hero-card-title">{{ h.title }}</span>
@@ -73,11 +83,13 @@ const sameElementBonus = computed(() => {
         <div class="hero-skills">
           <div class="skill-row">
             <span class="skill-tag tag4">四消</span>
+            <img class="skill-icon" :src="iconUrl(h.skill4IconId)" alt="" aria-hidden="true" draggable="false" />
             <span class="skill-name">{{ h.skill4.name }}</span>
             <span class="skill-desc">{{ h.skill4.desc }}</span>
           </div>
           <div class="skill-row">
             <span class="skill-tag tag5">五消</span>
+            <img class="skill-icon" :src="iconUrl(h.skill5IconId)" alt="" aria-hidden="true" draggable="false" />
             <span class="skill-name">{{ h.skill5.name }}</span>
             <span class="skill-desc">{{ h.skill5.desc }}</span>
           </div>
@@ -113,6 +125,29 @@ const sameElementBonus = computed(() => {
   color: #f5f0e6;
   font-size: 16px;
   cursor: pointer;
+}
+/* 头像与技能图标：256×256 透明 PNG，统一按容器铺满 */
+.back-btn img,
+.formation-avatar img,
+.hero-card-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.back-btn img { width: 20px; height: 20px; margin: 0 auto; }
+.support-emoji img { width: 20px; height: 20px; object-fit: contain; display: block; }
+.el-icon {
+  width: 13px;
+  height: 13px;
+  object-fit: contain;
+  vertical-align: -2px;
+}
+.skill-icon {
+  width: 17px;
+  height: 17px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 .page-title {
   font-size: 19px;

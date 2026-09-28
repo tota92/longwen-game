@@ -1,8 +1,13 @@
 <script setup lang="ts">
 /**
- * 战斗界面（REQ-UI 9.2 布局）：
- * 顶部=敌人区 / 中部=8×8 棋盘（占宽约 90%）/ 底部=英雄与遗物区
- * 左上=暂停按钮；浮动层=连击/飘字/技能特写；引导条（REQ-TUTORIAL 非弹窗教学）
+ * 战斗界面（REQ-UI 9.2 布局）
+ *
+ * UI 层次（关键战斗信息优先，游玩区最大化）：
+ *   顶部  暂停 + 关卡名 + 回合数        —— 窄条，不抢占游玩区
+ *   敌方  头像 / 血条 / 倒计时 / 意图 / 教程提示 —— 单一信息簇
+ *   中部  8×8 棋盘                      —— 游玩区，占满可用宽度与剩余高度
+ *   我方  英雄 / 血条护盾 / 元素加成 / 遗物 —— 单一信息簇
+ * 窄屏单列纵向堆叠；宽屏（≥860px）转为「棋盘左 / 信息右」双栏
  */
 import { computed } from 'vue'
 import { useGameStore } from '@/stores/game'
@@ -14,47 +19,38 @@ import SkillCutIn from '@/components/SkillCutIn.vue'
 import RelicSelect from '@/components/RelicSelect.vue'
 import ResultOverlay from '@/components/ResultOverlay.vue'
 import PauseOverlay from '@/components/PauseOverlay.vue'
-import { ELEMENT_INFO } from '@/config/constants'
+import { iconUrl } from '@/utils/icons'
 
 const store = useGameStore()
 const battle = store.battle
+
+/** 界面图标：暂停 */
+const pauseIcon = iconUrl('ui_pause')
 
 const waveText = computed(() => {
   if (!battle.level || battle.level.waves.length <= 1) return null
   return `第 ${battle.waveIndex + 1}/${battle.level.waves.length} 波`
 })
-
-const leaderHint = computed(() => {
-  const el = ELEMENT_INFO[store.leader.element]
-  return `主战${el.name}属性宝石 +20%`
-})
-
-/** 局内遗物列表（移动端无 hover，用文字标签直接展示名称） */
-const relics = computed(() => store.battle.relics.map((id) => store.getRelicInfo(id)))
 </script>
 
 <template>
   <div class="battle-view">
-    <!-- 顶部条：暂停 + 关卡信息 -->
+    <!-- 顶部条：暂停 + 关卡信息（窄条，不占用游玩区） -->
     <div class="battle-top">
-      <button class="pause-btn" @click="battle.paused = true">⏸</button>
+      <button class="pause-btn" @click="battle.paused = true" aria-label="暂停">
+        <img :src="pauseIcon" alt="" aria-hidden="true" draggable="false" />
+      </button>
       <div class="level-info">
         <span class="level-name font-title">{{ battle.level?.name }}</span>
         <span v-if="waveText" class="wave-text">{{ waveText }}</span>
       </div>
-      <div class="turn-text">回合 {{ battle.turnCount }}</div>
+      <div class="turn-text num">回合 {{ battle.turnCount }}</div>
     </div>
 
-    <!-- 敌人区 -->
-    <EnemyPanel />
+    <!-- 敌方区（含引导文案：教程提示并入敌方面板，避免新增一条边框行挤压棋盘） -->
+    <EnemyPanel :guide="store.guideText" />
 
-    <!-- 引导条（REQ-TUTO-001：无强制弹窗） -->
-    <div v-if="store.guideText" class="guide-bar">
-      <span class="guide-icon">💡</span>
-      <span>{{ store.guideText }}</span>
-    </div>
-
-    <!-- 棋盘（中部，占宽 ~90%） -->
+    <!-- 棋盘：战斗界面的游玩区，占满可用宽度与剩余高度 -->
     <div class="board-wrap" :class="{ shuffling: battle.shuffling }">
       <BoardGrid
         v-if="battle.board"
@@ -67,20 +63,7 @@ const relics = computed(() => store.battle.relics.map((id) => store.getRelicInfo
       />
     </div>
 
-    <!-- 增益条：主战元素加成 + 本局遗物（REQ-RELIC；移动端无 hover，直接显示名称） -->
-    <div class="buff-strip">
-      <span class="buff-chip leader-chip">
-        <span class="buff-icon">{{ ELEMENT_INFO[store.leader.element].icon }}</span>
-        {{ leaderHint }}
-      </span>
-      <span v-for="r in relics" :key="r.id" class="buff-chip relic-chip">
-        <span class="buff-icon">{{ r.icon }}</span>
-        {{ r.name }}
-      </span>
-      <span v-if="relics.length === 0" class="buff-chip empty-chip">击败敌人后可选遗物</span>
-    </div>
-
-    <!-- 玩家区 -->
+    <!-- 我方区：主战增益与遗物名称内联在面板内（原独立增益条信息重复，已合并） -->
     <PlayerPanel />
 
     <!-- 浮层 -->
@@ -106,31 +89,41 @@ const relics = computed(() => store.battle.relics.map((id) => store.getRelicInfo
   flex-direction: column;
   padding-top: env(safe-area-inset-top);
   padding-bottom: env(safe-area-inset-bottom);
+  /* 面板与棋盘之间的呼吸由 gap 统一控制，避免各处 margin 叠加出垂直死角 */
+  gap: var(--sp-3);
 }
 
 .battle-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px 0;
+  padding: var(--sp-3) var(--sp-4) 0;
+  flex-shrink: 0;
 }
 
 .pause-btn {
   width: 36px;
   height: 36px;
-  border-radius: 10px;
+  border-radius: var(--r-md);
   border: 1px solid var(--border-gold);
   background: var(--bg-panel);
-  color: #f5f0e6;
-  font-size: 15px;
+  color: var(--text-1);
   cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out);
 }
 .pause-btn:active { transform: scale(0.92); }
+.pause-btn img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
+}
 
 .level-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-3);
 }
 .level-name {
   font-size: 16px;
@@ -142,41 +135,21 @@ const relics = computed(() => store.battle.relics.map((id) => store.getRelicInfo
   color: #ffb199;
   border: 1px solid rgba(255, 177, 145, 0.4);
   padding: 1px 7px;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
 }
 .turn-text {
   font-size: 11px;
-  color: rgba(245, 240, 230, 0.55);
+  color: var(--text-3);
 }
 
-/* 引导条 */
-.guide-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 4px 10px;
-  padding: 7px 12px;
-  border-radius: 10px;
-  background: rgba(60, 167, 255, 0.1);
-  border: 1px solid rgba(60, 167, 255, 0.35);
-  font-size: 12px;
-  color: #bcd9ff;
-  animation: guide-in 0.4s ease;
-}
-@keyframes guide-in {
-  from { opacity: 0; translate: 0 -8px; }
-  to { opacity: 1; translate: 0 0; }
-}
-.guide-icon { font-size: 14px; }
-
-/* 棋盘容器：占宽约 90%（REQ-UI 9.2） */
+/* 棋盘容器：游玩区，占满可用宽度与剩余高度 */
 .board-wrap {
   position: relative;
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 12px;
+  padding: 0 var(--sp-3);
   min-height: 0;
   overflow: hidden; /* 让光晕止步于棋盘区域，不糊到敌人/玩家面板上 */
 }
@@ -197,9 +170,10 @@ const relics = computed(() => store.battle.relics.map((id) => store.getRelicInfo
   );
   pointer-events: none;
 }
+/* 棋盘边长 = 可用宽度（上限 94vw）与可用高度的较小值，保证在竖屏上尽可能大 */
 .board-wrap :deep(.board) {
   position: relative;
-  width: min(94vw, 100%, 56dvh);
+  width: min(100%, 94vw, 58dvh);
 }
 .board-wrap.shuffling {
   animation: shuffle-anim 0.45s ease-in-out infinite;
@@ -210,44 +184,47 @@ const relics = computed(() => store.battle.relics.map((id) => store.getRelicInfo
   75% { rotate: -1.2deg; }
 }
 
-/* 增益条：横向滚动，最多一行，避免撑高布局 */
-.buff-strip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 0 10px 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.buff-strip::-webkit-scrollbar { display: none; }
-
-.buff-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  font-size: 10px;
-  line-height: 1;
-  padding: 5px 9px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-  color: rgba(245, 240, 230, 0.72);
-  white-space: nowrap;
-}
-.buff-icon { font-size: 11px; }
-.leader-chip {
-  border-color: rgba(255, 150, 120, 0.35);
-  color: #ffcbb8;
-}
-.relic-chip {
-  border-color: rgba(212, 175, 55, 0.45);
-  background: rgba(212, 175, 55, 0.1);
-  color: var(--gold-light);
-}
-.relic-chip .buff-icon { filter: drop-shadow(0 0 4px rgba(212, 175, 55, 0.6)); }
-.empty-chip {
-  border-style: dashed;
-  color: rgba(245, 240, 230, 0.35);
+/* ============================================================
+ * 宽屏（≥860px）：棋盘左 / 信息右 双栏
+ * 游玩区保持方形且不受面板挤压，信息按"敌方在上、我方在下"纵向排列
+ * ============================================================ */
+@media (min-width: 860px) {
+  .battle-view {
+    display: grid;
+    /* 左栏游玩区自适应，右栏信息固定宽度区间 */
+    grid-template-columns: minmax(0, 1fr) clamp(340px, 30vw, 400px);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    /* 顶栏横跨整宽；右栏与棋盘同起止，形成上下框住棋盘的对位 */
+    grid-template-areas:
+      'top    top'
+      'board  side-top'
+      'board  side-bottom';
+    gap: var(--sp-4) var(--sp-6);
+    padding: var(--sp-4) var(--sp-6);
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+  .battle-top {
+    grid-area: top;
+    padding: 0;
+  }
+  /* 棋盘锁定为正方形并按可用高度收敛，保证两侧信息不挤压游玩区 */
+  .board-wrap {
+    grid-area: board;
+    padding: 0;
+  }
+  .board-wrap :deep(.board) {
+    width: min(100%, calc(100dvh - 170px));
+  }
+  .battle-view > .enemy-panel {
+    grid-area: side-top;
+    align-self: start;
+    margin: 0;
+  }
+  .battle-view > .player-panel {
+    grid-area: side-bottom;
+    align-self: end;
+    margin: 0;
+  }
 }
 </style>

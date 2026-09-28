@@ -4,8 +4,13 @@
  * 暂停期间阻止棋盘交互；进行中的结算流程会在恢复后继续
  */
 import { useGameStore } from '@/stores/game'
+import { iconUrl } from '@/utils/icons'
 
 const store = useGameStore()
+
+/** 音效开关图标（开/关两态） */
+const soundOnIcon = iconUrl('ui_sound_on')
+const soundOffIcon = iconUrl('ui_sound_off')
 
 function resume(): void {
   store.battle.paused = false
@@ -29,7 +34,12 @@ function quit(): void {
       <button class="btn" @click="retry">重新开始</button>
       <button class="btn" @click="quit">退出（进度已保存）</button>
       <button class="btn btn-sound" @click="store.toggleSound()">
-        {{ store.profile.settings.sound ? '🔊 音效：开' : '🔇 音效：关' }}
+        <img
+          :src="store.profile.settings.sound ? soundOnIcon : soundOffIcon"
+          alt=""
+          aria-hidden="true"
+          draggable="false"
+        />音效：{{ store.profile.settings.sound ? '开' : '关' }}
       </button>
     </div>
   </div>
@@ -63,5 +73,10 @@ function quit(): void {
   margin-bottom: 6px;
 }
 
-.btn-sound { font-size: 13px; opacity: 0.85; }
+.btn-sound { font-size: 13px; opacity: 0.9; }
+.btn-sound img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
 </style>

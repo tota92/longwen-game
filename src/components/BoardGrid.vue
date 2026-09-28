@@ -13,8 +13,9 @@
  * - 滑动：向上下左右滑动即交换（移动端手感）
  */
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { BOARD_SIZE, ELEMENT_INFO } from '@/config/constants'
-import type { Cell, Grid, Pos } from '@/types'
+import { BOARD_SIZE, ELEMENT_INFO, FROZEN_MARK_ICON, SPECIAL_MARK_ICON } from '@/config/constants'
+import { iconUrl } from '@/utils/icons'
+import type { ElementType, SpecialType, Cell, Grid, Pos } from '@/types'
 
 /**
  * 组件只依赖棋盘的公开数据接口；
@@ -43,7 +44,7 @@ interface RenderCell {
   row: number
   col: number
   element: keyof typeof ELEMENT_INFO
-  special: string | null
+  special: SpecialType | null
   frozen: number
   popping: boolean
 }
@@ -201,11 +202,10 @@ onBeforeUnmount(() => {
   window.removeEventListener('pointermove', onPointerMove)
 })
 
-const specialIcon: Record<string, string> = {
-  small: '✦',
-  ultimate: '★',
-  bomb: '✸'
-}
+/** 图标解析：元素宝石按元素取图，特殊石/冻结取覆盖标记图 */
+const elementIcon = (el: ElementType): string => iconUrl(ELEMENT_INFO[el].iconId)
+const specialMarkIcon = (s: SpecialType): string => iconUrl(SPECIAL_MARK_ICON[s])
+const frozenMarkIcon = iconUrl(FROZEN_MARK_ICON)
 </script>
 
 <template>
@@ -253,11 +253,31 @@ const specialIcon: Record<string, string> = {
       @pointerdown.prevent="onPointerDown($event, cell.row, cell.col)"
       @pointerup.prevent="onPointerUp(cell.row, cell.col)"
     >
-      <!-- 特殊石外环（六边棱环，与宝石本体同形状，透过 drop-shadow 形成描边光晕） -->
-      <span v-if="cell.special" class="gem-ring" aria-hidden="true"></span>
-      <span class="gem-icon" aria-hidden="true">{{ ELEMENT_INFO[cell.element].name }}</span>
-      <span v-if="cell.special" class="gem-special-mark">{{ specialIcon[cell.special] }}</span>
-      <span v-if="cell.frozen > 0" class="gem-frozen-mark">❄</span>
+      <!-- 宝石本体：256×256 透明 PNG（切面/包边/元素印记已绘制在图像内） -->
+      <img
+        class="gem-icon"
+        :src="elementIcon(cell.element)"
+        :alt="`${ELEMENT_INFO[cell.element].name}元素宝石`"
+        draggable="false"
+      />
+      <!-- 技能石覆盖标记（REQ-BOARD-003） -->
+      <img
+        v-if="cell.special"
+        class="gem-mark gem-mark-special"
+        :src="specialMarkIcon(cell.special)"
+        alt=""
+        aria-hidden="true"
+        draggable="false"
+      />
+      <!-- 冻结角标（REQ-ENEMY-101） -->
+      <img
+        v-if="cell.frozen > 0"
+        class="gem-mark gem-mark-frozen"
+        :src="frozenMarkIcon"
+        alt=""
+        aria-hidden="true"
+        draggable="false"
+      />
     </div>
   </div>
 </template>
@@ -318,82 +338,66 @@ const specialIcon: Record<string, string> = {
 }
 
 /*
- * 六边形切面宝石：
- * - 本体用 clip-path 切成宝石棱面，配合线性渐变 + 高光/暗部内阴影形成体积感
- * - 中心是元素汉字（火/水/木/光/暗/雷），与古风主题一致，且比 emoji 更易区分
+ * 宝石本体：直接使用 256×256 透明 PNG 图标（public/icons/el_*.png）
+ * 图像内已绘制六边切面、金质包边、明暗棱面与元素印记，
+ * CSS 只负责尺寸、投影与状态动效，避免重复绘制成本
  */
 .gem-icon {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 82%;
-  height: 82%;
-  font-size: clamp(15px, 4.9vw, 27px);
-  font-weight: 800;
-  line-height: 1;
-  color: rgba(255, 255, 255, 0.96);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-  clip-path: polygon(50% 2%, 92% 26%, 92% 74%, 50% 98%, 8% 74%, 8% 26%);
-  background-image:
-    radial-gradient(circle at 34% 22%, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 54%),
-    var(--gem-grad, linear-gradient(160deg, #6b7280, #374151));
-  box-shadow:
-    inset 0 0 0 2px rgba(255, 255, 255, 0.26),
-    inset 0 -9px 13px rgba(0, 0, 0, 0.36),
-    inset 0 7px 11px rgba(255, 255, 255, 0.16);
-  /* drop-shadow 跟随 clip-path 轮廓，让每颗宝石从棋盘上"浮"起来 */
-  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
   transition: scale 0.15s, filter 0.15s;
 }
 
-.el-fire { --gem-grad: linear-gradient(160deg, #ffa451 0%, #f04e35 44%, #ad1d19 100%); }
-.el-water { --gem-grad: linear-gradient(160deg, #6cc6ff 0%, #1f7fe0 46%, #0d3fa8 100%); }
-.el-wood { --gem-grad: linear-gradient(160deg, #93e79c 0%, #35ac5c 46%, #106b36 100%); }
-.el-light { --gem-grad: linear-gradient(160deg, #fff0a8 0%, #f4b81d 48%, #b57900 100%); }
-.el-dark { --gem-grad: linear-gradient(160deg, #cbaaff 0%, #8a4fdd 46%, #4a1f8f 100%); }
-.el-thunder { --gem-grad: linear-gradient(160deg, #c9f6ff 0%, #2cc3e6 46%, #0a6797 100%); }
+/* 元素主题色（用于状态光晕，与 ELEMENT_INFO 配色一致） */
+.el-fire { --gem-glow: 255, 90, 60; }
+.el-water { --gem-glow: 60, 167, 255; }
+.el-wood { --gem-glow: 76, 217, 100; }
+.el-light { --gem-glow: 240, 180, 41; }
+.el-dark { --gem-glow: 160, 107, 255; }
+.el-thunder { --gem-glow: 44, 195, 230; }
 
-/* 金色元素用深色字更清晰，其余用白字 */
-.el-light .gem-icon {
-  color: #5a3a00;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
-}
-
-/* 特殊石外环 */
-.gem-ring {
+/* 覆盖标记（技能石/冻结角标）：右上角贴附，带深色投影保证在宝石上可读 */
+.gem-mark {
   position: absolute;
-  width: 100%;
-  height: 100%;
-  clip-path: polygon(50% 2%, 92% 26%, 92% 74%, 50% 98%, 8% 74%, 8% 26%);
-  background: linear-gradient(160deg, #fff6d0, #d9a91f 62%, #a97c00);
-  filter: drop-shadow(0 0 6px rgba(240, 216, 120, 0.9));
+  top: -3%;
+  right: -3%;
+  width: 54%;
+  height: 54%;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.8));
 }
-.gem-special-ultimate .gem-ring {
-  background: linear-gradient(160deg, #f0d6ff, #a855f7 60%, #6d28d9);
-  filter: drop-shadow(0 0 8px rgba(199, 125, 255, 0.95));
-  animation: ring-pulse 1.4s ease-in-out infinite;
+.gem-mark-frozen {
+  top: auto;
+  right: -2%;
+  bottom: -2%;
+  width: 56%;
+  height: 56%;
 }
-.gem-special-bomb .gem-ring {
-  background: linear-gradient(160deg, #ffd2b0, #f4511e 58%, #b71c1c);
-  filter: drop-shadow(0 0 7px rgba(255, 90, 60, 0.9));
+
+/* 特殊石状态光晕：提示"当前宝石为技能石" */
+.gem-special-small .gem-icon {
+  filter: drop-shadow(0 0 7px rgba(240, 216, 120, 0.95))
+    drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
 }
-.gem-special-small .gem-icon,
-.gem-special-ultimate .gem-icon,
+.gem-special-ultimate .gem-icon {
+  filter: drop-shadow(0 0 9px rgba(199, 125, 255, 1))
+    drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
+}
 .gem-special-bomb .gem-icon {
-  width: 68%;
-  height: 68%;
-  font-size: clamp(11px, 3.7vw, 20px);
-}
-@keyframes ring-pulse {
-  0%, 100% { opacity: 0.72; }
-  50% { opacity: 1; }
+  filter: drop-shadow(0 0 8px rgba(255, 90, 60, 0.95))
+    drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
 }
 
 /* 选中态（脉冲放大） */
 .gem-selected .gem-icon {
   scale: 1.18;
-  filter: drop-shadow(0 0 8px rgba(240, 216, 120, 0.95)) brightness(1.15);
+  filter: drop-shadow(0 0 9px rgba(240, 216, 120, 1)) brightness(1.18);
 }
 
 /* 教学提示高亮（REQ-TUTO-002：闪烁提示可消除位置） */
@@ -423,48 +427,18 @@ const specialIcon: Record<string, string> = {
   to { translate: 0 0; opacity: 1; }
 }
 
-.gem-special-ultimate .gem-icon {
+/* 终极技能石呼吸光效（REQ-FEEL-002 技能石醒目） */
+.gem-special-ultimate .gem-mark {
   animation: ultimate-glow 1.4s ease-in-out infinite;
 }
 @keyframes ultimate-glow {
-  0%, 100% { filter: brightness(1.05); }
-  50% { filter: brightness(1.45); }
+  0%, 100% { scale: 1; opacity: 0.92; }
+  50% { scale: 1.14; opacity: 1; }
 }
 
-.gem-special-mark {
-  position: absolute;
-  top: 2%;
-  right: 8%;
-  font-size: 10px;
-  line-height: 1;
-  color: #2b1c00;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
-}
-.gem-special-ultimate .gem-special-mark {
-  color: #2b0a45;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
-}
-.gem-special-bomb .gem-special-mark {
-  color: #33100a;
-  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
-}
-
-/* 冻结宝石 */
+/* 冻结宝石：去色 + 霜蓝光晕（REQ-ENEMY-101 悬空固定的视觉表达） */
 .gem-frozen .gem-icon {
   filter: grayscale(0.75) brightness(1.02) saturate(0.45)
-    drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 6px rgba(140, 210, 255, 0.75));
-  box-shadow:
-    inset 0 0 0 3px rgba(180, 230, 255, 0.95),
-    inset 0 0 14px rgba(120, 200, 255, 0.55),
-    inset 0 -9px 13px rgba(0, 0, 0, 0.3),
-    inset 0 7px 11px rgba(255, 255, 255, 0.3);
-}
-.gem-frozen-mark {
-  position: absolute;
-  bottom: 1%;
-  right: 6%;
-  font-size: 12px;
-  color: #d6f1ff;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
+    drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 8px rgba(140, 210, 255, 0.85));
 }
 </style>

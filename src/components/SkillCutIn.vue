@@ -4,6 +4,7 @@
  * REQ-FEEL-002
  */
 import { useGameStore } from '@/stores/game'
+import { iconUrl } from '@/utils/icons'
 
 const store = useGameStore()
 </script>
@@ -12,10 +13,24 @@ const store = useGameStore()
   <transition name="cutin">
     <div v-if="store.cutIn" class="cutin-mask" :key="store.cutIn.id">
       <div class="cutin-band" :style="{ '--skill-color': store.cutIn.color }">
-        <div class="cutin-hero">{{ store.cutIn.heroIcon }}</div>
+        <img
+          class="cutin-hero"
+          :src="iconUrl(store.cutIn.heroIconId)"
+          :alt="store.cutIn.heroName"
+          draggable="false"
+        />
         <div class="cutin-text">
+          <div class="cutin-skill-row">
+            <img
+              class="cutin-skill-icon"
+              :src="iconUrl(store.cutIn.skillIconId)"
+              alt=""
+              aria-hidden="true"
+              draggable="false"
+            />
+            <div class="cutin-skill-name font-title">{{ store.cutIn.skillName }}!</div>
+          </div>
           <div class="cutin-hero-name font-title">{{ store.cutIn.heroName }}</div>
-          <div class="cutin-skill-name font-title">{{ store.cutIn.skillName }}!</div>
         </div>
       </div>
     </div>
@@ -48,7 +63,9 @@ const store = useGameStore()
 }
 
 .cutin-hero {
-  font-size: 58px;
+  width: 84px;
+  height: 84px;
+  object-fit: contain;
   filter: drop-shadow(0 0 16px var(--skill-color));
   animation: hero-zoom 0.5s cubic-bezier(0.2, 1.5, 0.4, 1);
 }
@@ -61,16 +78,29 @@ const store = useGameStore()
   to { opacity: 1; }
 }
 
+/* 技能名与技能图标同行，图标强化"释放了什么技能"的辨识 */
+.cutin-skill-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cutin-skill-icon {
+  width: 42px;
+  height: 42px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px var(--skill-color));
+}
 .cutin-hero-name {
   font-size: 15px;
   color: rgba(245, 240, 230, 0.75);
   letter-spacing: 3px;
 }
 .cutin-skill-name {
-  font-size: 30px;
+  font-size: 28px;
   font-weight: 900;
   color: var(--skill-color);
-  letter-spacing: 6px;
+  letter-spacing: 5px;
+  line-height: 1.1;
   text-shadow: 0 0 18px var(--skill-color);
 }
 
