@@ -26,8 +26,11 @@ const waveText = computed(() => {
 
 const leaderHint = computed(() => {
   const el = ELEMENT_INFO[store.leader.element]
-  return `主战 ${el.icon}${el.name}：${el.name}属性宝石伤害 +20%`
+  return `主战${el.name}属性宝石 +20%`
 })
+
+/** 局内遗物列表（移动端无 hover，用文字标签直接展示名称） */
+const relics = computed(() => store.battle.relics.map((id) => store.getRelicInfo(id)))
 </script>
 
 <template>
@@ -55,6 +58,7 @@ const leaderHint = computed(() => {
     <div class="board-wrap" :class="{ shuffling: battle.shuffling }">
       <BoardGrid
         v-if="battle.board"
+        :key="battle.boardSeq"
         :board="battle.board"
         :can-interact="battle.canInteract && !battle.paused && battle.phase === 'fighting'"
         :hint="battle.hint"
@@ -63,8 +67,18 @@ const leaderHint = computed(() => {
       />
     </div>
 
-    <!-- 主战提示 -->
-    <div class="leader-hint">{{ leaderHint }}</div>
+    <!-- 增益条：主战元素加成 + 本局遗物（REQ-RELIC；移动端无 hover，直接显示名称） -->
+    <div class="buff-strip">
+      <span class="buff-chip leader-chip">
+        <span class="buff-icon">{{ ELEMENT_INFO[store.leader.element].icon }}</span>
+        {{ leaderHint }}
+      </span>
+      <span v-for="r in relics" :key="r.id" class="buff-chip relic-chip">
+        <span class="buff-icon">{{ r.icon }}</span>
+        {{ r.name }}
+      </span>
+      <span v-if="relics.length === 0" class="buff-chip empty-chip">击败敌人后可选遗物</span>
+    </div>
 
     <!-- 玩家区 -->
     <PlayerPanel />
@@ -157,15 +171,35 @@ const leaderHint = computed(() => {
 
 /* 棋盘容器：占宽约 90%（REQ-UI 9.2） */
 .board-wrap {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 6px 12px;
+  padding: 10px 12px;
   min-height: 0;
+  overflow: hidden; /* 让光晕止步于棋盘区域，不糊到敌人/玩家面板上 */
+}
+/* 棋盘光晕：填补竖屏上下留白，让棋盘像"悬浮在法阵上" */
+.board-wrap::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(124%, 128vw);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    circle,
+    rgba(212, 175, 55, 0.17) 0%,
+    rgba(212, 175, 55, 0.06) 38%,
+    transparent 64%
+  );
+  pointer-events: none;
 }
 .board-wrap :deep(.board) {
-  width: min(90vw, 100%, 52dvh);
+  position: relative;
+  width: min(94vw, 100%, 56dvh);
 }
 .board-wrap.shuffling {
   animation: shuffle-anim 0.45s ease-in-out infinite;
@@ -176,10 +210,44 @@ const leaderHint = computed(() => {
   75% { rotate: -1.2deg; }
 }
 
-.leader-hint {
-  text-align: center;
+/* 增益条：横向滚动，最多一行，避免撑高布局 */
+.buff-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.buff-strip::-webkit-scrollbar { display: none; }
+
+.buff-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
   font-size: 10px;
-  color: rgba(245, 240, 230, 0.45);
-  margin-bottom: 2px;
+  line-height: 1;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(245, 240, 230, 0.72);
+  white-space: nowrap;
+}
+.buff-icon { font-size: 11px; }
+.leader-chip {
+  border-color: rgba(255, 150, 120, 0.35);
+  color: #ffcbb8;
+}
+.relic-chip {
+  border-color: rgba(212, 175, 55, 0.45);
+  background: rgba(212, 175, 55, 0.1);
+  color: var(--gold-light);
+}
+.relic-chip .buff-icon { filter: drop-shadow(0 0 4px rgba(212, 175, 55, 0.6)); }
+.empty-chip {
+  border-style: dashed;
+  color: rgba(245, 240, 230, 0.35);
 }
 </style>

@@ -39,6 +39,8 @@ const leaderElement = computed(() => ELEMENT_INFO[leader.value.element])
       </div>
       <div class="hp-bar">
         <div class="hp-fill" :style="{ width: `${(store.battle.playerHP / PLAYER_MAX_HP) * 100}%` }"></div>
+        <div class="hp-gloss" aria-hidden="true"></div>
+        <div class="hp-ticks" aria-hidden="true"></div>
         <span class="hp-text">{{ store.battle.playerHP }}/{{ PLAYER_MAX_HP }}</span>
       </div>
     </div>
@@ -61,33 +63,50 @@ const leaderElement = computed(() => ELEMENT_INFO[leader.value.element])
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 12px 14px;
   margin: 4px 10px 10px;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 8% 100%, rgba(60, 167, 255, 0.12), transparent 58%),
+    var(--bg-panel);
+}
+/* 顶部一道己方色描边，与敌方面板呼应 */
+.player-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(120, 190, 255, 0.6), transparent);
 }
 
 .hero-avatar {
   position: relative;
-  width: 54px;
-  height: 54px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #33415c, #171e2c);
+  background:
+    radial-gradient(circle at 35% 30%, rgba(140, 200, 255, 0.3), transparent 62%),
+    radial-gradient(circle at 50% 60%, #26324a, #11161f);
   border: 2px solid;
+  box-shadow: 0 0 14px rgba(90, 160, 240, 0.25), inset 0 0 12px rgba(0, 0, 0, 0.6);
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
 }
-.hero-icon { font-size: 28px; }
+.hero-icon { font-size: 30px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
 .hero-el {
   position: absolute;
-  bottom: -6px;
+  bottom: -7px;
   left: 50%;
   transform: translateX(-50%);
   font-size: 10px;
   color: #14100a;
   font-weight: 700;
-  border-radius: 8px;
-  padding: 0 7px;
+  border-radius: 9px;
+  padding: 1px 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
 }
 
 .player-info { flex: 1; min-width: 0; }
@@ -106,26 +125,50 @@ const leaderElement = computed(() => ELEMENT_INFO[leader.value.element])
 
 .hp-bar {
   position: relative;
-  height: 14px;
-  background: #26303f;
-  border-radius: 7px;
-  margin-top: 5px;
+  height: 16px;
+  background: linear-gradient(180deg, #1e2735, #131a25);
+  border-radius: 8px;
+  margin-top: 6px;
   overflow: hidden;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
 }
 .hp-fill {
   height: 100%;
-  background: linear-gradient(90deg, #57d98a, #2fa860);
-  border-radius: 7px;
+  background: linear-gradient(180deg, #7ff0a8, #38c46e 55%, #1c8e4c);
+  border-radius: 8px;
+  box-shadow: 0 0 10px rgba(56, 196, 110, 0.5);
   transition: width 0.35s ease;
+}
+.hp-gloss {
+  position: absolute;
+  inset: 1px 1px auto;
+  height: 44%;
+  border-radius: 8px 8px 6px 6px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+.hp-ticks {
+  position: absolute;
+  inset: 0;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(25% - 1px),
+    rgba(0, 0, 0, 0.35) calc(25% - 1px),
+    rgba(0, 0, 0, 0.35) 25%
+  );
+  pointer-events: none;
 }
 .hp-text {
   position: absolute;
   inset: 0;
   font-size: 10px;
-  line-height: 14px;
+  line-height: 16px;
   text-align: center;
   color: #fff;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
 /* 护盾徽章：HP 条上方（REQ-HERO-103） */
@@ -153,15 +196,16 @@ const leaderElement = computed(() => ELEMENT_INFO[leader.value.element])
   flex-shrink: 0;
 }
 .relic-icon {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 19px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid var(--border-gold);
-  border-radius: 9px;
+  font-size: 20px;
+  background: radial-gradient(circle at 50% 20%, rgba(212, 175, 55, 0.22), rgba(0, 0, 0, 0.4));
+  border: 1px solid rgba(212, 175, 55, 0.55);
+  border-radius: 10px;
+  box-shadow: 0 0 8px rgba(212, 175, 55, 0.25);
   animation: relic-in 0.3s ease;
 }
 @keyframes relic-in {
@@ -169,9 +213,10 @@ const leaderElement = computed(() => ELEMENT_INFO[leader.value.element])
   to { scale: 1; opacity: 1; }
 }
 .relic-empty {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border: 1px dashed rgba(255, 255, 255, 0.15);
-  border-radius: 9px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
 }
 </style>

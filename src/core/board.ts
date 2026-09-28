@@ -269,10 +269,13 @@ export class GameBoard {
 
     const pushClear = (p: Pos) => {
       const k = key(p)
-      if (!clearMap.has(k)) {
-        clearMap.set(k, p)
-        queue.push(p)
-      }
+      if (clearMap.has(k)) return
+      const cell = grid[p.row]?.[p.col]
+      // 冻结宝石是固定障碍，不可被消除（REQ-ENEMY-101）：
+      // 既不能作为消除种子，也不会被炸弹的 3×3 范围波及。
+      if (!cell || cell.frozen > 0) return
+      clearMap.set(k, p)
+      queue.push(p)
     }
     seeds.forEach(pushClear)
 

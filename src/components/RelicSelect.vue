@@ -13,6 +13,14 @@ const relics = computed(() => store.relicOffers.map((id) => getRelic(id)))
 /** 首次遗物选择（1-3 教学关后） */
 const isFirstTime = computed(() => store.battle.level?.tutorial === 'intro5')
 
+/** 遗物分类中文标签（原来是英文枚举，直接展示给玩家不友好） */
+const TYPE_LABEL: Record<string, string> = {
+  output: '输出',
+  control: '控制',
+  survival: '生存',
+  rule: '规则'
+}
+
 function choose(id: string): void {
   store.chooseRelic(id)
 }
@@ -23,7 +31,7 @@ function choose(id: string): void {
     <div class="relic-dialog">
       <div class="relic-title font-title">遗物抉择</div>
       <p class="relic-sub">
-        {{ isFirstTime ? '选择一件遗物，它将在本关剩余战斗中为你效力！' : '选择一件遗物强化本局build' }}
+        {{ isFirstTime ? '选择一件遗物，它将在本关剩余战斗中为你效力！' : '选择一件遗物，强化本局流派' }}
       </p>
       <div class="relic-cards">
         <button
@@ -36,7 +44,7 @@ function choose(id: string): void {
           <span class="relic-card-icon">{{ r.icon }}</span>
           <span class="relic-card-name font-title">{{ r.name }}</span>
           <span class="relic-card-desc">{{ r.desc }}</span>
-          <span class="relic-card-type">{{ r.type }}</span>
+          <span class="relic-card-type">{{ TYPE_LABEL[r.type] ?? r.type }}</span>
         </button>
       </div>
     </div>
@@ -91,6 +99,7 @@ function choose(id: string): void {
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  min-height: 196px;
   padding: 18px 8px 14px;
   border-radius: 14px;
   border: 1px solid var(--border-gold);
@@ -122,16 +131,28 @@ function choose(id: string): void {
   color: var(--gold-light);
 }
 .relic-card-desc {
+  flex: 1;
   font-size: 11px;
   line-height: 1.5;
   color: rgba(245, 240, 230, 0.85);
-  min-height: 33px;
 }
 .relic-card-type {
+  margin-top: auto;
   font-size: 9px;
   padding: 1px 8px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: rgba(245, 240, 230, 0.6);
 }
+
+/* 分类色：让玩家一眼看出这张卡偏向输出/控制/生存/规则 */
+.relic-card.type-output .relic-card-type { color: #ffb199; border-color: rgba(255, 120, 90, 0.5); }
+.relic-card.type-control .relic-card-type { color: #9fd8ff; border-color: rgba(60, 167, 255, 0.5); }
+.relic-card.type-survival .relic-card-type { color: #7dedb2; border-color: rgba(76, 217, 100, 0.5); }
+.relic-card.type-rule .relic-card-type { color: #e0b3ff; border-color: rgba(199, 125, 255, 0.5); }
+
+.relic-card.type-output { border-color: rgba(255, 120, 90, 0.35); }
+.relic-card.type-control { border-color: rgba(60, 167, 255, 0.35); }
+.relic-card.type-survival { border-color: rgba(76, 217, 100, 0.35); }
+.relic-card.type-rule { border-color: rgba(199, 125, 255, 0.35); }
 </style>

@@ -28,7 +28,17 @@ function onStart(): void {
       <p class="home-slogan">三消聚能 · 技能爆发 · 遗物构建</p>
     </div>
 
-    <div class="home-dragon">🐉</div>
+    <!-- 龙纹徽记：环形法阵 + 悬浮龙首，填补竖屏中段的留白 -->
+    <div class="home-emblem">
+      <span class="emblem-ring ring-outer"></span>
+      <span class="emblem-ring ring-dashed"></span>
+      <span class="emblem-ring ring-inner"></span>
+      <span class="emblem-rune rune-a">火</span>
+      <span class="emblem-rune rune-b">水</span>
+      <span class="emblem-rune rune-c">木</span>
+      <span class="emblem-rune rune-d">雷</span>
+      <div class="home-dragon">🐉</div>
+    </div>
 
     <div class="home-actions">
       <button class="btn btn-primary btn-big home-start" @click="onStart">
@@ -121,9 +131,59 @@ function onStart(): void {
   margin: 0;
 }
 
+.home-emblem {
+  position: relative;
+  width: min(58vw, 226px);
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emblem-ring {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.ring-outer {
+  inset: 0;
+  border: 1px solid rgba(212, 175, 55, 0.32);
+  background: radial-gradient(circle at 50% 44%, rgba(212, 175, 55, 0.16), transparent 62%);
+  box-shadow:
+    inset 0 0 42px rgba(212, 175, 55, 0.14),
+    0 0 34px rgba(212, 175, 55, 0.12);
+}
+.ring-dashed {
+  inset: 12%;
+  border: 1px dashed rgba(212, 175, 55, 0.28);
+  animation: emblem-spin 28s linear infinite;
+}
+.ring-inner {
+  inset: 26%;
+  border: 1px solid rgba(212, 175, 55, 0.18);
+}
+@keyframes emblem-spin {
+  to { rotate: 360deg; }
+}
+
+/* 四元素符文环绕 */
+.emblem-rune {
+  position: absolute;
+  font-size: 12px;
+  font-family: 'STKaiti', 'KaiTi', serif;
+  color: rgba(212, 175, 55, 0.55);
+  text-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+}
+.rune-a { top: 4%; left: 50%; transform: translateX(-50%); }
+.rune-b { bottom: 4%; left: 50%; transform: translateX(-50%); }
+.rune-c { left: 3%; top: 50%; transform: translateY(-50%); }
+.rune-d { right: 3%; top: 50%; transform: translateY(-50%); }
+
 .home-dragon {
-  font-size: 86px;
-  filter: drop-shadow(0 0 30px rgba(212, 175, 55, 0.4));
+  position: relative;
+  font-size: 96px;
+  line-height: 1;
+  filter: drop-shadow(0 0 30px rgba(212, 175, 55, 0.45));
   animation: dragon-float 3.2s ease-in-out infinite;
 }
 @keyframes dragon-float {

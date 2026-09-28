@@ -204,7 +204,7 @@ onBeforeUnmount(() => {
 const specialIcon: Record<string, string> = {
   small: '✦',
   ultimate: '★',
-  bomb: '💣'
+  bomb: '✸'
 }
 </script>
 
@@ -253,7 +253,9 @@ const specialIcon: Record<string, string> = {
       @pointerdown.prevent="onPointerDown($event, cell.row, cell.col)"
       @pointerup.prevent="onPointerUp(cell.row, cell.col)"
     >
-      <span class="gem-icon">{{ ELEMENT_INFO[cell.element].icon }}</span>
+      <!-- 特殊石外环（六边棱环，与宝石本体同形状，透过 drop-shadow 形成描边光晕） -->
+      <span v-if="cell.special" class="gem-ring" aria-hidden="true"></span>
+      <span class="gem-icon" aria-hidden="true">{{ ELEMENT_INFO[cell.element].name }}</span>
       <span v-if="cell.special" class="gem-special-mark">{{ specialIcon[cell.special] }}</span>
       <span v-if="cell.frozen > 0" class="gem-frozen-mark">❄</span>
     </div>
@@ -265,24 +267,40 @@ const specialIcon: Record<string, string> = {
   position: relative;
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 12px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid var(--border-gold);
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 50% 38%, rgba(212, 175, 55, 0.1), transparent 62%),
+    radial-gradient(circle at 50% 118%, rgba(120, 60, 200, 0.14), transparent 58%),
+    linear-gradient(180deg, rgba(30, 21, 48, 0.94), rgba(11, 8, 20, 0.96));
+  border: 1px solid rgba(212, 175, 55, 0.38);
   box-shadow:
-    inset 0 0 24px rgba(0, 0, 0, 0.5),
-    0 6px 24px rgba(0, 0, 0, 0.45);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 0 32px rgba(0, 0, 0, 0.6),
+    0 10px 30px rgba(0, 0, 0, 0.55),
+    0 0 0 4px rgba(13, 10, 23, 0.9);
   touch-action: none; /* 阻止页面滚动，滑动交换专用 */
   overflow: hidden;
+}
+
+/* 内描金线：把棋盘从背景里"框"出来，避免大面积留白显得空 */
+.board::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border-radius: 13px;
+  border: 1px solid rgba(212, 175, 55, 0.14);
+  pointer-events: none;
+  z-index: 5;
 }
 
 .board-bg {
   position: absolute;
   width: 12.5%;
   height: 12.5%;
-  background: rgba(255, 255, 255, 0.02);
+  background: transparent;
 }
 .board-bg.bg-alt {
-  background: rgba(255, 255, 255, 0.045);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 /* ---------- 宝石 ---------- */
@@ -299,6 +317,11 @@ const specialIcon: Record<string, string> = {
   will-change: transform;
 }
 
+/*
+ * 六边形切面宝石：
+ * - 本体用 clip-path 切成宝石棱面，配合线性渐变 + 高光/暗部内阴影形成体积感
+ * - 中心是元素汉字（火/水/木/光/暗/雷），与古风主题一致，且比 emoji 更易区分
+ */
 .gem-icon {
   position: relative;
   display: flex;
@@ -306,26 +329,71 @@ const specialIcon: Record<string, string> = {
   justify-content: center;
   width: 82%;
   height: 82%;
-  font-size: clamp(16px, 5.4vw, 30px);
-  border-radius: 50%;
-  background: radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.35), transparent 55%);
-  box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.4);
-  transition: box-shadow 0.15s, scale 0.15s;
+  font-size: clamp(15px, 4.9vw, 27px);
+  font-weight: 800;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.96);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  clip-path: polygon(50% 2%, 92% 26%, 92% 74%, 50% 98%, 8% 74%, 8% 26%);
+  background-image:
+    radial-gradient(circle at 34% 22%, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 54%),
+    var(--gem-grad, linear-gradient(160deg, #6b7280, #374151));
+  box-shadow:
+    inset 0 0 0 2px rgba(255, 255, 255, 0.26),
+    inset 0 -9px 13px rgba(0, 0, 0, 0.36),
+    inset 0 7px 11px rgba(255, 255, 255, 0.16);
+  /* drop-shadow 跟随 clip-path 轮廓，让每颗宝石从棋盘上"浮"起来 */
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5));
+  transition: scale 0.15s, filter 0.15s;
 }
 
-.el-fire .gem-icon { background-color: rgba(255, 90, 60, 0.22); }
-.el-water .gem-icon { background-color: rgba(60, 167, 255, 0.22); }
-.el-wood .gem-icon { background-color: rgba(76, 217, 100, 0.22); }
-.el-light .gem-icon { background-color: rgba(255, 217, 76, 0.22); }
-.el-dark .gem-icon { background-color: rgba(160, 107, 255, 0.22); }
-.el-thunder .gem-icon { background-color: rgba(255, 225, 53, 0.22); }
+.el-fire { --gem-grad: linear-gradient(160deg, #ffa451 0%, #f04e35 44%, #ad1d19 100%); }
+.el-water { --gem-grad: linear-gradient(160deg, #6cc6ff 0%, #1f7fe0 46%, #0d3fa8 100%); }
+.el-wood { --gem-grad: linear-gradient(160deg, #93e79c 0%, #35ac5c 46%, #106b36 100%); }
+.el-light { --gem-grad: linear-gradient(160deg, #fff0a8 0%, #f4b81d 48%, #b57900 100%); }
+.el-dark { --gem-grad: linear-gradient(160deg, #cbaaff 0%, #8a4fdd 46%, #4a1f8f 100%); }
+.el-thunder { --gem-grad: linear-gradient(160deg, #c9f6ff 0%, #2cc3e6 46%, #0a6797 100%); }
+
+/* 金色元素用深色字更清晰，其余用白字 */
+.el-light .gem-icon {
+  color: #5a3a00;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+/* 特殊石外环 */
+.gem-ring {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  clip-path: polygon(50% 2%, 92% 26%, 92% 74%, 50% 98%, 8% 74%, 8% 26%);
+  background: linear-gradient(160deg, #fff6d0, #d9a91f 62%, #a97c00);
+  filter: drop-shadow(0 0 6px rgba(240, 216, 120, 0.9));
+}
+.gem-special-ultimate .gem-ring {
+  background: linear-gradient(160deg, #f0d6ff, #a855f7 60%, #6d28d9);
+  filter: drop-shadow(0 0 8px rgba(199, 125, 255, 0.95));
+  animation: ring-pulse 1.4s ease-in-out infinite;
+}
+.gem-special-bomb .gem-ring {
+  background: linear-gradient(160deg, #ffd2b0, #f4511e 58%, #b71c1c);
+  filter: drop-shadow(0 0 7px rgba(255, 90, 60, 0.9));
+}
+.gem-special-small .gem-icon,
+.gem-special-ultimate .gem-icon,
+.gem-special-bomb .gem-icon {
+  width: 68%;
+  height: 68%;
+  font-size: clamp(11px, 3.7vw, 20px);
+}
+@keyframes ring-pulse {
+  0%, 100% { opacity: 0.72; }
+  50% { opacity: 1; }
+}
 
 /* 选中态（脉冲放大） */
 .gem-selected .gem-icon {
   scale: 1.18;
-  box-shadow:
-    0 0 0 2px var(--gold-light),
-    0 0 16px rgba(240, 216, 120, 0.8);
+  filter: drop-shadow(0 0 8px rgba(240, 216, 120, 0.95)) brightness(1.15);
 }
 
 /* 教学提示高亮（REQ-TUTO-002：闪烁提示可消除位置） */
@@ -333,8 +401,8 @@ const specialIcon: Record<string, string> = {
   animation: hint-blink 1s ease-in-out infinite;
 }
 @keyframes hint-blink {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(240, 216, 120, 0); scale: 1; }
-  50% { box-shadow: 0 0 0 3px rgba(240, 216, 120, 0.9), 0 0 18px rgba(240, 216, 120, 0.7); scale: 1.14; }
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(240, 216, 120, 0)); scale: 1; }
+  50% { filter: drop-shadow(0 0 10px rgba(240, 216, 120, 1)) brightness(1.2); scale: 1.12; }
 }
 
 /* 消除动画：scale 属性独立于 transform，不干扰位移补间 */
@@ -355,51 +423,48 @@ const specialIcon: Record<string, string> = {
   to { translate: 0 0; opacity: 1; }
 }
 
-/* 特殊石外观 */
-.gem-special-small .gem-icon {
-  border: 2px solid var(--gold-light);
-  box-shadow: 0 0 10px rgba(240, 216, 120, 0.65);
-}
 .gem-special-ultimate .gem-icon {
-  border: 2px solid #c77dff;
-  box-shadow: 0 0 14px rgba(199, 125, 255, 0.85);
   animation: ultimate-glow 1.4s ease-in-out infinite;
 }
 @keyframes ultimate-glow {
-  0%, 100% { filter: brightness(1); }
+  0%, 100% { filter: brightness(1.05); }
   50% { filter: brightness(1.45); }
-}
-.gem-special-bomb .gem-icon {
-  border: 2px solid #ff5a3c;
-  box-shadow: 0 0 12px rgba(255, 90, 60, 0.8);
 }
 
 .gem-special-mark {
   position: absolute;
-  top: 4%;
-  right: 6%;
-  font-size: 11px;
-  color: var(--gold-light);
-  text-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+  top: 2%;
+  right: 8%;
+  font-size: 10px;
+  line-height: 1;
+  color: #2b1c00;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
 }
 .gem-special-ultimate .gem-special-mark {
-  color: #e0b3ff;
+  color: #2b0a45;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
 }
 .gem-special-bomb .gem-special-mark {
-  color: #ff8d75;
+  color: #33100a;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.6);
 }
 
 /* 冻结宝石 */
 .gem-frozen .gem-icon {
-  filter: grayscale(0.6) brightness(1.2);
-  border: 2px solid rgba(160, 220, 255, 0.8);
+  filter: grayscale(0.75) brightness(1.02) saturate(0.45)
+    drop-shadow(0 2px 2px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 6px rgba(140, 210, 255, 0.75));
+  box-shadow:
+    inset 0 0 0 3px rgba(180, 230, 255, 0.95),
+    inset 0 0 14px rgba(120, 200, 255, 0.55),
+    inset 0 -9px 13px rgba(0, 0, 0, 0.3),
+    inset 0 7px 11px rgba(255, 255, 255, 0.3);
 }
 .gem-frozen-mark {
   position: absolute;
-  bottom: 2%;
-  right: 8%;
-  font-size: 11px;
-  color: #a0dcff;
-  text-shadow: 0 0 4px rgba(0, 0, 0, 0.9);
+  bottom: 1%;
+  right: 6%;
+  font-size: 12px;
+  color: #d6f1ff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.95);
 }
 </style>

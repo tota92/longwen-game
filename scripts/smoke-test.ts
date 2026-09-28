@@ -3,8 +3,15 @@
  * 运行：npx tsx scripts/smoke-test.ts
  */
 import { GameBoard } from '../src/core/board'
-import { BOARD_SIZE } from '../src/config/constants'
-import { calcWaveDamage, calcComboMult, calcSkillDamage, createEnemyState } from '../src/core/battle'
+import { BOARD_SIZE, ELEMENTS } from '../src/config/constants'
+import {
+  advanceEnemyPhase,
+  calcWaveDamage,
+  calcComboMult,
+  calcSkillDamage,
+  createEnemyState,
+  enemyDead
+} from '../src/core/battle'
 import type { ElementType, Grid, MatchGroup, Pos } from '../src/types'
 
 let passed = 0
@@ -81,13 +88,23 @@ console.log('\n[3] 炸弹 3×3 展开与连锁引爆（REQ-BOARD-005）')
 {
   const b = new GameBoard()
   b.grid = emptyGrid()
-  // (4,4) 放炸弹石，周围铺宝石
+  // (4,4) 放炸弹石，3×3 范围内铺满宝石
   setCell(b, 4, 4, 'fire')
   b.grid[4][4]!.special = 'bomb'
-  setCell(b, 3, 3, 'water'); setCell(b, 3, 4, 'water'); setCell(b, 3, 5, 'water')
-  setCell(b, 5, 5, 'fire'); b.grid[5][5]!.special = 'small' // 连锁引爆目标
+  for (let r = 3; r <= 5; r++) {
+    for (let c = 3; c <= 5; c++) {
+      if (r === 4 && c === 4) continue
+      setCell(b, r, c, 'water')
+    }
+  }
+  b.grid[5][5]!.special = 'small' // 3×3 范围内的连锁引爆目标
+  setCell(b, 4, 6, 'fire') // 范围外的对照格，不应被清除
   const { clear, triggeredSpecials } = GameBoard.expandBombTargets(b.grid, [{ row: 4, col: 4 }])
   assert(clear.length === 9, `炸弹 3×3 展开（实际 ${clear.length} 格）`)
+  assert(
+    !clear.some((p) => p.row === 4 && p.col === 6),
+    '炸弹范围外（距离 >1）的宝石不受影响'
+  )
   assert(
     triggeredSpecials.length === 2 && triggeredSpecials.every((p) =>
       (p.row === 4 && p.col === 4) || (p.row === 5 && p.col === 5)
@@ -210,6 +227,60 @@ console.log('\n[8] 快照序列化往返（REQ-SAVE-002）')
     }
   }
   assert(noConflict, '恢复后新宝石 id 无冲突（渲染 key 安全）')
+}
+
+// ------------------------------------------------------------------
+console.log('\n[9] 冻结宝石免疫消除（REQ-ENEMY-101 回归）')
+// ------------------------------------------------------------------
+{
+  const b = new GameBoard()
+  // 造一个干净棋盘：全部填充普通宝石
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      setCell(b, r, c, ELEMENTS[(r + c) % ELEMENTS.length])
+    }
+  }
+  const frozenPos = { row: 3, col: 3 }
+  b.grid[frozenPos.row][frozenPos.col]!.frozen = 2
+
+  // 以 (3,3) 正上方为炸弹种子，其 3×3 范围必然覆盖冻结格
+  const preview = GameBoard.expandBombTargets(b.grid, [{ row: 2, col: 3 }])
+  const hitFrozen = preview.clear.some((p) => p.row === 3 && p.col === 3)
+  assert(!hitFrozen, '炸弹 3×3 范围不会波及冻结宝石')
+
+  // 即使直接把冻结格作为种子，也不应被清除
+  const direct = GameBoard.expandBombTargets(b.grid, [frozenPos])
+  assert(direct.clear.length === 0, '冻结宝石不能作为消除种子')
+
+  // 真实落盘校验：清一次炸弹后冻结格仍在棋盘上
+  const { cleared } = b.commitClear([{ row: 2, col: 3 }])
+  const stillFrozen = b.grid[frozenPos.row][frozenPos.col]
+  assert(!!stillFrozen && stillFrozen.frozen > 0, 'commitClear 后冻结宝石仍留在棋盘上')
+  assert(
+    cleared.every((c) => !(c.pos.row === frozenPos.row && c.pos.col === frozenPos.col)),
+    '被清除列表中不含冻结宝石'
+  )
+}
+
+// ------------------------------------------------------------------
+console.log('\n[10] Boss 阶段转换（REQ-ENEMY-003 回归）')
+// ------------------------------------------------------------------
+{
+  const dragon = createEnemyState({ enemyId: 'enemy_ancient_dragon' })
+  assert(dragon.phaseHP.length === 2 && dragon.phaseMaxHp === 80, '远古巨龙：一阶段 80 血')
+
+  dragon.hp = 0
+  const advanced = advanceEnemyPhase(dragon)
+  assert(advanced && dragon.phase === 2, '血量耗尽后推进到第二阶段')
+  assert(dragon.hp === 60, '二阶段血量重置为 60')
+  // 回归点：阶段上限必须同步，否则血条按 80 计算永远显示不满
+  assert(dragon.phaseMaxHp === 60, '二阶段血量上限同步为 60（血条显示正确）')
+  assert(dragon.countdown === dragon.baseCountdown + 1, '阶段转换重置倒计时（补偿本回合递减）')
+  assert(!enemyDead(dragon), '二阶段敌人不应判定为死亡')
+
+  dragon.hp = 0
+  assert(!advanceEnemyPhase(dragon), '最后一阶段血量耗尽后不再推进')
+  assert(enemyDead(dragon), '最后一阶段血量耗尽判定为死亡')
 }
 
 // ------------------------------------------------------------------

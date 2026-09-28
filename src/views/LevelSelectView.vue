@@ -35,6 +35,11 @@ function levelIcon(type: string): string {
 function waveNames(waves: { enemyId: string }[]): string {
   return [...new Set(waves.map((w) => getEnemy(w.enemyId).name))].join(' / ')
 }
+
+/** 本章已通关数 */
+function clearedInChapter(levels: typeof LEVELS): number {
+  return levels.filter((lv) => lv.id < store.profile.unlockedLevel).length
+}
 </script>
 
 <template>
@@ -47,7 +52,12 @@ function waveNames(waves: { enemyId: string }[]): string {
 
     <div class="levels-content">
       <section v-for="[chapter, levels] in chapters" :key="chapter" class="chapter">
-        <h2 class="chapter-title font-title">{{ CHAPTER_NAMES[chapter] }}</h2>
+        <h2 class="chapter-title font-title">
+          {{ CHAPTER_NAMES[chapter] }}
+          <span class="chapter-progress">
+            {{ clearedInChapter(levels) }}/{{ levels.length }}
+          </span>
+        </h2>
         <div class="level-grid">
           <button
             v-for="lv in levels"
@@ -108,12 +118,23 @@ function waveNames(waves: { enemyId: string }[]): string {
 
 .chapter { margin-bottom: 18px; }
 .chapter-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 15px;
   color: var(--gold);
   letter-spacing: 3px;
   margin: 10px 0;
   border-left: 3px solid var(--gold);
   padding-left: 10px;
+}
+.chapter-progress {
+  font-size: 10px;
+  letter-spacing: 0;
+  color: rgba(245, 240, 230, 0.45);
+  border: 1px solid rgba(245, 240, 230, 0.15);
+  border-radius: 999px;
+  padding: 1px 7px;
 }
 
 .level-grid {
@@ -132,8 +153,27 @@ function waveNames(waves: { enemyId: string }[]): string {
   color: #f5f0e6;
   transition: transform 0.12s;
   position: relative;
+  overflow: hidden;
 }
 .level-node:active { transform: scale(0.95); }
+
+/* 已通关：整块降饱和 + 顶部一道绿色进度线，与"当前/未解锁"一眼区分 */
+.state-cleared { border-color: rgba(125, 237, 178, 0.28); }
+.state-cleared::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(125, 237, 178, 0.75), transparent);
+}
+.state-cleared .node-icon { filter: saturate(0.65) brightness(0.92); }
+.state-cleared .node-name { color: rgba(240, 232, 214, 0.8); }
+
+/* 精英关：冷色描边，与普通关区分 */
+.type-elite {
+  border-color: rgba(150, 200, 255, 0.42);
+  background: linear-gradient(180deg, rgba(120, 190, 255, 0.12), rgba(120, 190, 255, 0.02));
+}
 
 .node-icon { font-size: 22px; }
 .node-id {

@@ -48,13 +48,3 @@ export function writeSave(data: SaveData): boolean {
   }
 }
 
-/** 清除战斗快照（正常结束战斗后调用） */
-export function clearBattleSnapshot(): void {
-  try {
-    const data = loadSave()
-    data.battleSnapshot = null
-    writeSave(data)
-  } catch {
-    /* 静默 */
-  }
-}

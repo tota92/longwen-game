@@ -217,4 +217,8 @@ export interface BattleSnapshot {
   maxComboInBattle: number
   totalDamage: number
   woodGemCleared: number
+  /** 快照保存时的战斗阶段：遗物三选一中断后可正确恢复（旧存档缺省视为 fighting） */
+  phase?: 'fighting' | 'relicSelect'
+  /** 与 phase='relicSelect' 配套保存的三选一候选，保证恢复后选项一致 */
+  relicOffers?: string[]
 }

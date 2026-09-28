@@ -115,3 +115,19 @@ export function enemyPhaseBroken(enemy: EnemyState): boolean {
 export function enemyDead(enemy: EnemyState): boolean {
   return enemy.hp <= 0 && enemy.phase >= enemy.phaseHP.length
 }
+
+/**
+ * Boss 阶段转换（REQ-ENEMY-003）：当前阶段血量耗尽且仍有下一阶段时推进。
+ * 同步更新 phaseMaxHp，否则二阶段血条会按一阶段满血计算、永远显示不满。
+ * 倒计时重置为 baseCountdown + 1：+1 用于抵消本回合敌人阶段即将发生的递减，
+ * 使玩家看到的稳定值恰好等于 baseCountdown。
+ * @returns 是否发生了阶段转换
+ */
+export function advanceEnemyPhase(enemy: EnemyState): boolean {
+  if (enemy.hp > 0 || enemy.phase >= enemy.phaseHP.length) return false
+  enemy.phase++
+  enemy.hp = enemy.phaseHP[enemy.phase - 1]
+  enemy.phaseMaxHp = enemy.phaseHP[enemy.phase - 1]
+  enemy.countdown = enemy.baseCountdown + 1
+  return true
+}

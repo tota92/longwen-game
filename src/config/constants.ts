@@ -14,9 +14,10 @@ export const ELEMENT_INFO: Record<ElementType, { name: string; icon: string; col
   fire: { name: '火', icon: '🔥', color: '#ff5a3c' },
   water: { name: '水', icon: '💧', color: '#3ca7ff' },
   wood: { name: '木', icon: '🌿', color: '#4cd964' },
-  light: { name: '光', icon: '☀️', color: '#ffd94c' },
+  light: { name: '光', icon: '☀️', color: '#f0b429' },
   dark: { name: '暗', icon: '🌑', color: '#a06bff' },
-  thunder: { name: '雷', icon: '⚡', color: '#ffe135' }
+  // 雷改为电青色：原设计与"光"同为黄色（#ffd94c / #ffe135），棋盘上难以区分
+  thunder: { name: '雷', icon: '⚡', color: '#2cc3e6' }
 }
 
 /** 玩家初始/上限 HP */

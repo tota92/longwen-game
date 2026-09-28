@@ -15,6 +15,7 @@ import { defineStore } from 'pinia'
 import { computed, reactive, ref } from 'vue'
 import { GameBoard } from '@/core/board'
 import {
+  advanceEnemyPhase,
   calcSkillDamage,
   calcWaveDamage,
   createEnemyState,
@@ -45,7 +46,7 @@ import type {
   SkillEffect,
   SpecialType
 } from '@/types'
-import { loadSave, writeSave, clearBattleSnapshot } from '@/utils/storage'
+import { loadSave, writeSave } from '@/utils/storage'
 import { audio } from '@/utils/audio'
 import { sampleN, sleep } from '@/utils/anim'
 
@@ -69,6 +70,8 @@ interface BattleRuntime {
   paused: boolean
   phase: BattlePhase
   result: 'victory' | 'defeat' | null
+  /** 棋盘实例序号：关卡重开时递增，用于强制重建棋盘 DOM（避免复用上一局宝石产生幻影滑动） */
+  boardSeq: number
   /** 教学 1-1：已完成消除次数 */
   tutorialProgress: number
   /** 教学 1-1：高亮提示的有效交换对 */
@@ -102,6 +105,7 @@ export const useGameStore = defineStore('game', () => {
     paused: false,
     phase: 'fighting',
     result: null,
+    boardSeq: 0,
     tutorialProgress: 0,
     hint: null,
     shuffling: false
@@ -142,8 +146,9 @@ export const useGameStore = defineStore('game', () => {
     const lv = battle.level
     if (!lv?.tutorial) return null
     if (lv.tutorial === 'match') {
+      // 目标与进度在上方训练面板展示，这里只给"怎么做"的操作提示，避免重复文案
       return battle.tutorialProgress < TUTORIAL_MATCH_TARGET
-        ? `完成 ${TUTORIAL_MATCH_TARGET} 次消除即可通关（${battle.tutorialProgress}/${TUTORIAL_MATCH_TARGET}）`
+        ? '交换相邻两颗宝石，凑齐 3 个同元素即可消除'
         : '干得漂亮！'
     }
     if (lv.tutorial === 'intro4') return '提示：4 个相同宝石连成一线会生成技能石，点击它可直接释放！'
@@ -173,7 +178,10 @@ export const useGameStore = defineStore('game', () => {
       combo: battle.combo,
       maxComboInBattle: battle.maxComboInBattle,
       totalDamage: battle.totalDamage,
-      woodGemCleared: battle.woodGemCleared
+      woodGemCleared: battle.woodGemCleared,
+      // 遗物三选一属于"进行中战斗"的一部分：记录阶段与候选，恢复后可继续选择
+      phase: battle.phase === 'relicSelect' ? 'relicSelect' : 'fighting',
+      relicOffers: battle.phase === 'relicSelect' ? [...relicOffers.value] : []
     }
     persist()
   }
@@ -182,7 +190,14 @@ export const useGameStore = defineStore('game', () => {
   // UI 瞬态工具
   // ================================================================
   function addFloat(text: string, kind: FloatText['kind']): void {
-    const ft: FloatText = { id: uid++, x: 50, y: kind === 'heal' ? 78 : 22, text, kind }
+    // x 轴轻微抖动：避免同回合多条飘字完全重叠（连击/技能/状态同时出现时）
+    const ft: FloatText = {
+      id: uid++,
+      x: 50 + Math.round((Math.random() - 0.5) * 26),
+      y: kind === 'heal' ? 78 : 22,
+      text,
+      kind
+    }
     floatTexts.value.push(ft)
     setTimeout(() => {
       floatTexts.value = floatTexts.value.filter((f) => f.id !== ft.id)
@@ -242,6 +257,7 @@ export const useGameStore = defineStore('game', () => {
       initialSpecial: ddaSpecial
     })
     battle.board = board // reactive 包装由赋值触发
+    battle.boardSeq++
 
     if (level.tutorial === 'match') {
       // 教学 1-1：无敌人（REQ-TUTO-002）
@@ -251,6 +267,7 @@ export const useGameStore = defineStore('game', () => {
       spawnWave(0)
       battle.hint = null
     }
+    relicOffers.value = []
     battle.canInteract = true
     screen.value = 'battle'
     saveSnapshot()
@@ -279,18 +296,29 @@ export const useGameStore = defineStore('game', () => {
     battle.enemy = snap.enemy
     battle.relics = [...snap.relics]
     battle.board = GameBoard.fromGrid(snap.grid)
+    battle.boardSeq++
     battle.combo = 0
     battle.maxComboInBattle = snap.maxComboInBattle
     battle.totalDamage = snap.totalDamage
     battle.woodGemCleared = snap.woodGemCleared
     battle.result = null
-    battle.phase = 'fighting'
     battle.paused = false
     battle.tutorialProgress = level.tutorial === 'match' ? snap.turnCount : 0
     battle.hint = level.tutorial === 'match' ? battle.board.findValidSwap() : null
     battle.shuffling = false
-    battle.canInteract = true
     floatTexts.value = []
+
+    // 若中断发生在遗物三选一，恢复同样的候选并重新进入选择阶段（旧存档无 phase 字段则视为战斗阶段）
+    const offers = (snap.relicOffers ?? []).filter((id) => !battle.relics.includes(id))
+    if (snap.phase === 'relicSelect' && offers.length > 0) {
+      relicOffers.value = offers
+      battle.phase = 'relicSelect'
+      battle.canInteract = false
+    } else {
+      relicOffers.value = []
+      battle.phase = 'fighting'
+      battle.canInteract = true
+    }
     screen.value = 'battle'
   }
 
@@ -308,12 +336,7 @@ export const useGameStore = defineStore('game', () => {
     audio.play(kind === 'skill' ? 'skill' : 'combo', Math.min(battle.combo, 8))
 
     // Boss 阶段转换：血量耗尽且仍有下一阶段
-    if (enemy.hp <= 0 && enemy.phase < enemy.phaseHP.length) {
-      enemy.phase++
-      enemy.hp = enemy.phaseHP[enemy.phase - 1]
-      // 重置倒计时（REQ-ENEMY-003）：+1 抵消本回合敌人阶段即将发生的递减，
-      // 使玩家看到的稳定值恰好为 baseCountdown
-      enemy.countdown = enemy.baseCountdown + 1
+    if (advanceEnemyPhase(enemy)) {
       addFloat(`${enemy.display} 狂怒！进入第 ${enemy.phase} 阶段`, 'info')
       doShake()
       doFlash()
@@ -756,7 +779,9 @@ export const useGameStore = defineStore('game', () => {
       profile.failStreak[battle.level!.id] = (profile.failStreak[battle.level!.id] ?? 0) + 1
       audio.play('defeat')
     }
-    clearBattleSnapshot() // 同时清除 profile.battleSnapshot
+    // 战斗已结束：必须清掉响应式 profile 上的快照，否则主界面会残留"继续战斗"入口，
+    // 点击后恢复到一场已经打完的战斗（快照在 persist 之前清除）
+    profile.battleSnapshot = null
     persist()
   }
 
