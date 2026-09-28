@@ -6,7 +6,7 @@
  *
  * 位置约定：飘字贴着自己的阵营显示——伤害/技能落在敌方区（顶部），
  * 治疗落在己方区（底部），不再压在棋盘格子上。
- * 系统提示类文案已迁出本层，统一由棋盘下方的独立提示区承载（TipBar.vue）。
+ * 系统提示类文案已迁出本层，统一由覆盖在棋盘之上的提示浮层承载（TipBar.vue）。
  */
 import { useGameStore } from '@/stores/game'
 
@@ -79,7 +79,7 @@ const store = useGameStore()
 .ft-crit { color: #ff7a59; font-size: 26px; }
 .ft-skill { color: #ffe28a; font-size: 24px; }
 .ft-heal { color: #7dedb2; font-size: 18px; }
-/* 兜底：info 类文案现已统一改走提示区（TipBar），此处保留以防未来有代码直接推入 info 飘字 */
+/* 兜底：info 类文案现已统一改走提示浮层（TipBar），此处保留以防未来有代码直接推入 info 飘字 */
 .ft-info { color: #cfe0ff; font-size: 13px; font-weight: 500; }
 
 /* 连击展示（战斗展示区下方、棋盘上方） */

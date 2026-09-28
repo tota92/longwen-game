@@ -941,4 +941,40 @@ function showRelicInfo(id: string): void {
   .vs-text { font-size: 13px; }
   .goal-text { font-size: 14px; }
 }
+
+/* ============================================================
+ * 矮屏（≤760px 高）：展示区压扁，把高度让给棋盘
+ *
+ * 展示区是棋盘之外最高的一块（375×667 上 179px，其中立绘 90px）。
+ * 这里按「立绘变小 → 行高收紧 → 内边距收紧」的顺序让位：
+ * 压完约 130px，棋盘因此能多吃约 50px 高度，回到约 90% 屏宽。
+ * 信息区（宝石/技能）不动，保证技能页不被裁切。
+ * 断点与 BattleView.vue 的矮屏规则保持同一数值。
+ * 必须放在宽屏规则之后：矮屏优先于宽屏（棋盘优先于展示区）。
+ * ============================================================ */
+@media (max-height: 760px) {
+  .battle-stage { padding: var(--sp-1) var(--sp-3); }
+  /* 立绘下限收到 48px：8×8 棋盘上仍能一眼认出角色阵营与动作 */
+  .sprite-box,
+  .tutorial-goal { height: clamp(48px, 8.5dvh, 88px); }
+  .name-row { min-height: 14px; }
+  .actor-name { font-size: 11px; }
+  .hp-bar {
+    height: 12px;
+    margin-top: 2px;
+  }
+  .hp-text { font-size: 9.5px; }
+  .relic-row,
+  .intent-row,
+  .charge-row {
+    min-height: 13px;
+    margin-top: 2px;
+  }
+  .mini-icon {
+    width: 15px;
+    height: 15px;
+  }
+  .mini-badge { font-size: 8.5px; }
+  .intent-text { font-size: 9px; }
+}
 </style>

@@ -156,7 +156,7 @@ export const useGameStore = defineStore('game', () => {
   const flashWhite = ref(0)
   /** 敌人行动预警计数（REQ-FEEL-005：行动前 0.5 秒预警动画） */
   const enemyWarn = ref(0)
-  /** 提示区当前展示的系统提示（自动消失；教程引导走 guideText 常驻） */
+  /** 提示浮层当前展示的系统提示（自动消失；教程引导走 guideText 常驻） */
   const tip = ref<{ id: number; text: string } | null>(null)
   let tipTimer = 0
   let uid = 1
@@ -223,8 +223,9 @@ export const useGameStore = defineStore('game', () => {
   })
 
   /**
-   * 提示区当前应展示的内容（系统提示优先于教程引导）。
-   * 所有提示统一收敛到棋盘下方的独立提示区，不再挤占或遮挡棋盘。
+   * 提示浮层当前应展示的内容（系统提示优先于教程引导）。
+   * 所有提示统一收敛到覆盖在棋盘之上的提示浮层：
+   * 既不占布局空间（棋盘尺寸/位置完全不受影响），也不拦截棋盘操作。
    */
   const activeTip = computed<{ text: string; kind: 'tutorial' | 'system' } | null>(() => {
     if (tip.value) return { text: tip.value.text, kind: 'system' }
@@ -297,8 +298,8 @@ export const useGameStore = defineStore('game', () => {
   // UI 瞬态工具
   // ================================================================
   /**
-   * 提示区：展示一条系统提示（到点自动消失）。
-   * 系统提示不再以飘字形式盖在棋盘上，统一走棋盘下方的独立提示区，
+   * 提示浮层：展示一条系统提示（到点自动消失）。
+   * 系统提示不再以飘字形式飘在棋盘上方，统一走棋盘之上的提示浮层，
    * 避免多条信息叠加遮挡操作区域。
    */
   function showTip(text: string, duration = ANIM.tip): void {
@@ -325,7 +326,7 @@ export const useGameStore = defineStore('game', () => {
   }
 
   function addFloat(text: string, kind: FloatText['kind']): void {
-    // 系统提示统一走提示区，不再盖在棋盘上
+    // 系统提示统一走提示浮层，不再盖在棋盘格子上
     if (kind === 'info') {
       showTip(text)
       return

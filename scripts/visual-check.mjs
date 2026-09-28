@@ -2,7 +2,11 @@
  * 多视口视觉校验（仅开发期使用）
  *
  * 一次 Chrome 会话内遍历多个视口，输出每个视口的关键盒模型 + 截图，
- * 用来验收响应式布局：棋盘是否溢出、提示条是否压住棋盘、面板是否被裁切。
+ * 用来验收响应式布局：棋盘是否铺满剩余空间、提示浮层是否只覆盖棋盘而不改变棋盘、
+ * 面板是否被裁切。
+ *
+ * 棋盘契约：边长 = min(容器内容框宽, 容器内容框高)，即剩余空间内最大的正方形；
+ * 提示契约：浮层完全落在棋盘之内（覆盖棋盘），且摘掉浮层后棋盘矩形不变。
  *
  * 用法：node scripts/visual-check.mjs [baseUrl]
  */
@@ -54,6 +58,61 @@ const MEASURE = `(() => {
   const b = box('.board'), t = box('.tip-layer'), w = box('.board-wrap')
   const tc = box('.tab-content')
   const guard = document.querySelector('.rotate-guard')
+
+  // 铺满度 = 棋盘边长 / 剩余空间里能放下的最大正方形边长（1.000 为刚好铺满）
+  let fill = null
+  let boardStable = null
+  const wrapEl = document.querySelector('.board-wrap')
+  if (wrapEl && b) {
+    const cs = getComputedStyle(wrapEl)
+    const contentW = wrapEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)
+    const contentH = wrapEl.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
+    fill = +(b.w / Math.min(contentW, contentH)).toFixed(3)
+
+    // 提示浮层不得影响棋盘：把浮层从渲染树摘掉后，棋盘矩形必须一模一样
+    const layer = document.querySelector('.tip-layer')
+    if (layer) {
+      const prev = layer.style.display
+      layer.style.display = 'none'
+      const after = document.querySelector('.board').getBoundingClientRect()
+      boardStable =
+        Math.abs(after.x - b.x) < 0.5 && Math.abs(after.y - b.y) < 0.5 &&
+        Math.abs(after.width - b.w) < 0.5 && Math.abs(after.height - b.h) < 0.5
+      layer.style.display = prev
+    }
+  }
+
+  const layerEl = document.querySelector('.tip-layer')
+  const barEl = document.querySelector('.tip-bar')
+
+  // 洗牌抖动只挂在棋盘本体上：提示浮层不跟着歪（浮层不是棋盘的一部分）
+  // 注意：scoped SFC 会给 @keyframes 加作用域后缀（shuffle-anim-<hash>），所以用前缀匹配
+  let shuffleOnBoardOnly = null
+  if (wrapEl) {
+    wrapEl.classList.add('shuffling')
+    shuffleOnBoardOnly =
+      getComputedStyle(document.querySelector('.board')).animationName.startsWith('shuffle-anim') &&
+      (!layerEl || getComputedStyle(layerEl).animationName === 'none')
+    wrapEl.classList.remove('shuffling')
+  }
+  // 真·命中测试：从提示条正中取样，穿透后必须落在棋盘（或被关闭按钮接住），
+  // 证明浮层没有挡住宝石的落子/滑动
+  let tipHitBoard = null
+  if (barEl && b) {
+    const r = barEl.getBoundingClientRect()
+    const hit = document.elementFromPoint(r.left + Math.min(14, r.width / 2), r.top + r.height / 2)
+    tipHitBoard = !!hit && (hit.closest('.tip-close') !== null || hit.closest('.board') !== null)
+  }
+
+  // 棋盘上不允许有常驻的可点控件：任何盖在棋格上的按钮都会抢掉落子点击。
+  // 提示条自己的关闭按钮随提示一起出现/消失，单独放行。
+  const boardBoxEl = document.querySelector('.board-box')
+  const boardBlockers = boardBoxEl
+    ? [...boardBoxEl.querySelectorAll('*')]
+        .filter((el) => !el.closest('.board') && !el.closest('.tip-close'))
+        .filter((el) => getComputedStyle(el).pointerEvents !== 'none')
+        .map((el) => el.className.toString())
+    : []
   return JSON.stringify({
     vw: innerWidth, vh: innerHeight,
     // 横屏守卫生效时游戏本体不渲染，棋盘指标无意义
@@ -61,8 +120,20 @@ const MEASURE = `(() => {
     wrap: w, board: b, tip: t, tabContent: tc,
     // 棋盘是否严格正方形
     square: b ? Math.abs(b.w - b.h) < 0.8 : null,
-    // 棋盘底边 - 提示条顶边：>0 表示提示条压住棋盘
-    tipOverlap: b && t ? +(b.y + b.h - t.y).toFixed(1) : null,
+    fill,
+    boardStable,
+    // 提示浮层必须完整落在棋盘之内（浮在棋盘之上，而非另占一块地方）
+    tipInBoard: b && t
+      ? t.x >= b.x - 0.5 && t.y >= b.y - 0.5 &&
+        t.x + t.w <= b.x + b.w + 0.5 && t.y + t.h <= b.y + b.h + 0.5
+      : null,
+    // 不拦截棋盘操作：浮层与提示条本体都必须是 pointer-events:none
+    tipPointerNone: layerEl ? getComputedStyle(layerEl).pointerEvents === 'none' : null,
+    tipBarPointerNone: barEl ? getComputedStyle(barEl).pointerEvents === 'none' : null,
+    tipHitBoard,
+    shuffleOnBoardOnly,
+    // 棋盘内除「提示关闭按钮」外不应有任何可点元素（常驻控件会挡住底行宝石）
+    boardBlockers,
     // 棋盘是否完全落在视口内
     boardInView: b ? b.x >= -0.5 && b.x + b.w <= innerWidth + 0.5 && b.y >= -0.5 && b.y + b.h <= innerHeight + 0.5 : null,
     // Tab 内容是否被容器裁切。
@@ -143,8 +214,9 @@ try {
 
   const pad = (s, n) => String(s).padEnd(n)
   console.log(
-    pad('case', 15) + pad('viewport', 11) + pad('board', 13) + pad('sq', 5) + pad('inView', 8) +
-      pad('tipOverlap', 12) + pad('tabClip', 9) + 'ovf'
+    pad('case', 15) + pad('viewport', 11) + pad('board', 13) + pad('sq', 5) + pad('fill', 7) +
+      pad('inView', 8) + pad('stable', 8) + pad('tipIn', 7) + pad('tipPE', 7) +
+      pad('hitThru', 9) + pad('shuffle', 9) + pad('blocks', 8) + pad('tabClip', 9) + 'ovf'
   )
   for (const r of results) {
     if (r.guard) {
@@ -156,8 +228,14 @@ try {
         pad(`${r.vw}x${r.vh}`, 11) +
         pad(`${r.board.w}x${r.board.h}`, 13) +
         pad(r.square, 5) +
+        pad(r.fill, 7) +
         pad(r.boardInView, 8) +
-        pad(r.tipOverlap, 12) +
+        pad(r.boardStable, 8) +
+        pad(r.tipInBoard, 7) +
+        pad(r.tipPointerNone && r.tipBarPointerNone, 7) +
+        pad(r.tipHitBoard === null ? '—' : r.tipHitBoard, 9) +
+        pad(r.shuffleOnBoardOnly, 9) +
+        pad(r.boardBlockers.length, 8) +
         pad(r.tabClipped, 9) +
         r.overflowCount
     )
@@ -166,7 +244,25 @@ try {
     if (r.guard) return false
     // 棋盘塌陷（宽或高小于 120px）说明布局空间不足
     if (!r.board || r.board.w < 120 || r.board.h < 120) return true
-    return !r.square || !r.boardInView || r.tipOverlap > 0 || r.tabClipped || r.overflowCount > 0
+    return (
+      !r.square ||
+      !r.boardInView ||
+      // 铺满度：1.000 为刚好铺满剩余空间；小于 1 是留白，大于 1 是溢出
+      r.fill === null || r.fill < 0.99 || r.fill > 1.001 ||
+      // 提示浮层既不能改变棋盘，也不能跑到棋盘之外，更不能拦截操作
+      !r.boardStable ||
+      !r.tipInBoard ||
+      !r.tipPointerNone ||
+      !r.tipBarPointerNone ||
+      r.tipHitBoard === false ||
+      // 洗牌抖动仍只作用于棋盘本体
+      !r.shuffleOnBoardOnly ||
+      // 棋盘上不得有常驻控件（提示关闭按钮随提示出现，已单独放行）
+      !Array.isArray(r.boardBlockers) ||
+      r.boardBlockers.length > 0 ||
+      r.tabClipped ||
+      r.overflowCount > 0
+    )
   })
   console.log(bad.length ? `\n❌ ${bad.length} 个视口存在问题: ${bad.map((b) => b.name).join(', ')}` : '\n✅ 全部视口通过')
 } finally {

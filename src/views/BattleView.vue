@@ -5,11 +5,16 @@
  * UI 层次（自上而下）：
  *   顶部    暂停 + 关卡名 + 回合数        —— 窄条，不抢占游玩区
  *   展示区  英雄 vs 怪物：立绘 / 动作 / 特效 / 血条 —— 战斗反馈的舞台
- *   中部    8×8 棋盘                      —— 游玩区，占满剩余高度
+ *   中部    8×8 棋盘                      —— 游玩区，独占剩余全部空间
+ *   浮层    提示条（TipBar）               —— 覆盖在棋盘之上，不占布局空间
  *   信息区  宝石 / 技能 双 Tab 面板        —— 局内态势与技能可用状态
  *
  * 窄屏（<860px）单列纵向堆叠，信息区收成底部双 Tab，棋盘不被压缩；
  * 宽屏（≥860px）转为「左：展示区+棋盘 / 右：信息区常驻」双栏。
+ *
+ * 棋盘尺寸只有一个来源：.board-wrap 的实测内容框（见下方 100cqh），
+ * 边长取「可用宽度 ∩ 可用高度」，既不溢出也不留出无用空隙；
+ * 提示浮层挂在棋盘方框内做绝对定位，因此提示的出现/消失不会改变棋盘。
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useGameStore } from '@/stores/game'
@@ -31,6 +36,7 @@ const battle = store.battle
 /** 界面图标 */
 const ICON = {
   pause: iconUrl('ui_pause'),
+  tip: iconUrl('ui_tip'),
   gem: iconUrl('el_light'),
   skill: iconUrl('ov_ultimate')
 } as const
@@ -62,9 +68,26 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
   <div class="battle-view">
     <!-- 顶部条：暂停 + 关卡信息（窄条，不占用游玩区） -->
     <div class="battle-top">
-      <button class="pause-btn" @click="battle.paused = true" aria-label="暂停">
-        <img :src="ICON.pause" alt="" aria-hidden="true" draggable="false" />
-      </button>
+      <div class="top-left">
+        <button class="top-btn pause-btn" @click="battle.paused = true" aria-label="暂停">
+          <img :src="ICON.pause" alt="" aria-hidden="true" draggable="false" />
+        </button>
+        <!--
+          教程提示被关闭后的重开入口：放在顶栏而不是棋盘上——
+          棋盘上任何常驻按钮都会盖住底部一行宝石、抢掉落子点击。
+        -->
+        <transition name="tip">
+          <button
+            v-if="!store.activeTip && store.hasHiddenGuide"
+            class="top-btn hint-btn"
+            type="button"
+            aria-label="重新显示提示"
+            @click="store.reopenTip()"
+          >
+            <img :src="ICON.tip" alt="" aria-hidden="true" draggable="false" />
+          </button>
+        </transition>
+      </div>
       <div class="level-info">
         <span class="level-name font-title">{{ battle.level?.name }}</span>
         <span v-if="waveText" class="wave-text">{{ waveText }}</span>
@@ -75,20 +98,22 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
     <!-- 战斗展示区：英雄 vs 怪物 -->
     <BattleStage />
 
-    <!-- 棋盘：战斗界面的游玩区 -->
+    <!-- 棋盘：战斗界面的游玩区（独占剩余空间；提示浮层覆盖其上，不占布局空间） -->
     <div class="board-wrap" :class="{ shuffling: battle.shuffling }">
-      <BoardGrid
-        v-if="battle.board"
-        :key="battle.boardSeq"
-        :board="battle.board"
-        :can-interact="battle.canInteract && !battle.paused && battle.phase === 'fighting'"
-        :hint="battle.hint"
-        :focus-element="battle.focusElement"
-        @swap="(a, b) => store.doSwap(a, b)"
-        @tap-special="(p) => store.tapSpecial(p)"
-      />
-      <!-- 提示区：绝对定位于棋盘区底部、不参与文档流 -->
-      <TipBar />
+      <div class="board-box">
+        <BoardGrid
+          v-if="battle.board"
+          :key="battle.boardSeq"
+          :board="battle.board"
+          :can-interact="battle.canInteract && !battle.paused && battle.phase === 'fighting'"
+          :hint="battle.hint"
+          :focus-element="battle.focusElement"
+          @swap="(a, b) => store.doSwap(a, b)"
+          @tap-special="(p) => store.tapSpecial(p)"
+        />
+        <!-- 提示浮层：绝对定位盖在棋盘之上，从文档流里摘除 -->
+        <TipBar />
+      </div>
     </div>
 
     <!-- 信息区（窄屏）：宝石 / 技能 双 Tab -->
@@ -162,10 +187,6 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
      这是技能页不被裁切的下限，两页取同一值，切 Tab 时棋盘尺寸才不会变。
      矮屏实测只差 3px 棋盘，不值得为它牺牲技能页完整性。 */
   --bottom-total: 128px;
-  /* 提示带：TipBar 绝对定位在棋盘区底部，必须在这里预留高度，
-     否则棋盘下方留白不足时提示条会压住最后一行宝石（宽屏棋盘受高度限制时尤其明显）。
-     预留而非动态让位，是为了提示出现/消失时棋盘不跳动。 */
-  --tip-h: 58px;
 }
 
 .battle-top {
@@ -176,7 +197,14 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
   flex-shrink: 0;
 }
 
-.pause-btn {
+/* 顶栏左侧：暂停 +（必要时）提示重开，两者同一套图标按钮语言 */
+.top-left {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.top-btn {
   width: 36px;
   height: 36px;
   border-radius: var(--r-md);
@@ -186,13 +214,32 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
   cursor: pointer;
   transition: transform var(--dur-fast) var(--ease-out);
 }
-.pause-btn:active { transform: scale(0.92); }
-.pause-btn img {
+.top-btn:active { transform: scale(0.92); }
+.top-btn img {
   width: 20px;
   height: 20px;
   object-fit: contain;
   display: block;
   margin: 0 auto;
+}
+/* 提示入口：教程色系蓝调，一眼区别于金色按钮，但不做循环动画（克制） */
+.hint-btn {
+  border-color: rgba(120, 190, 255, 0.5);
+  background: rgba(60, 167, 255, 0.12);
+  box-shadow: 0 0 10px rgba(60, 167, 255, 0.28);
+}
+.hint-btn img {
+  filter: drop-shadow(0 0 5px rgba(60, 167, 255, 0.75));
+}
+/* 与提示浮层共用同一套进出场过渡 */
+.tip-enter-active,
+.tip-leave-active {
+  transition: opacity 0.22s ease, translate 0.22s ease;
+}
+.tip-enter-from,
+.tip-leave-to {
+  opacity: 0;
+  translate: 0 10px;
 }
 
 .level-info {
@@ -217,18 +264,19 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
   color: var(--text-3);
 }
 
-/* 棋盘容器：游玩区，占满剩余高度 */
+/* 棋盘容器：游玩区，吃掉顶部条 / 展示区 / 信息区之外的全部剩余空间 */
 .board-wrap {
   position: relative;
   flex: 1;
   display: flex;
   align-items: center;
   justify-content: center;
-  /* 底部预留提示带：棋盘在扣掉提示带后的内容框里居中 */
-  padding: 0 var(--sp-3) var(--tip-h);
+  /* 四周留 8px：棋盘外圈 4px 暗色描边 + 投影不会被 overflow 裁掉，
+     也让棋盘不贴屏幕边。竖直方向同样内缩，保证"铺满"是铺满可用内容框。 */
+  padding: var(--sp-3);
   min-height: 0;
   overflow: hidden; /* 让光晕止步于棋盘区域，不糊到展示区/信息区上 */
-  /* 让棋盘用容器实测高度定尺寸（见下方 100cqh），
+  /* 让棋盘用容器实测尺寸定边长（见下方 100cqh），
      而不是拿 100dvh 去减一串魔法常数——安全区、地址栏收起、横屏都会改变可用高度，
      减法公式必然对不准，最后表现为棋盘溢出被裁 */
   container-type: size;
@@ -251,16 +299,21 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
   pointer-events: none;
 }
 /*
- * 棋盘边长 = min(内容框宽, 内容框高)。
- * 100cqh 取的是 .board-wrap 内容框的实测高度（已扣掉提示带 padding），
- * 因此安全区、地址栏收放、横屏切换都能自动适应，不再依赖任何魔法常数。
- * 94vw 上限保证竖屏左右留出边距，棋盘不贴屏幕边。
+ * 棋盘方框：边长 = min(内容框宽, 内容框高)，即剩余空间内能放下的最大正方形。
+ * 100cqh 取的是 .board-wrap 内容框的实测高度，因此安全区、地址栏收放、
+ * 横屏切换都能自动适应，不再依赖任何魔法常数，也不会溢出被裁。
+ * 提示浮层（TipBar）挂在这一层里：绝对定位覆盖棋盘，不参与布局，
+ * 所以提示出现/消失不会改变棋盘尺寸与位置。
  */
-.board-wrap :deep(.board) {
+.board-box {
   position: relative;
-  width: min(100%, 94vw, 100cqh);
+  width: min(100%, 100cqh);
+  aspect-ratio: 1;
+  /* 自己也是容器：浮层内部可用 cqw / cqh 按棋盘实际边长缩放（字号、内边距） */
+  container-type: size;
 }
-.board-wrap.shuffling {
+/* 重排抖动：只抖棋盘本体，提示浮层保持水平可读 */
+.board-wrap.shuffling :deep(.board) {
   animation: shuffle-anim 0.45s ease-in-out infinite;
 }
 @keyframes shuffle-anim {
@@ -341,6 +394,31 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
 }
 
 /* ============================================================
+ * 矮屏（≤760px 高）：HUD 让位给棋盘
+ *
+ * 棋盘是正方形，边长 = min(宽, 高) —— 矮屏上真正卡住棋盘的是高度：
+ * 375×667 上「顶部 52 + 展示区 179 + 间距 32 + 信息区 140」吃掉 403px，
+ * 棋盘只剩 264px（70% 屏宽）。这里收紧顶栏与各处间距（展示区的压缩在
+ * BattleStage.vue，断点取同一数值），把棋盘送回约 90% 屏宽的视觉重心位置。
+ * 信息区高度不动：它的 128px 是技能页不被裁切的下限。
+ * ============================================================ */
+@media (max-height: 760px) {
+  .battle-view { gap: var(--sp-2); }
+  .battle-top { padding-top: var(--sp-1); }
+  .top-btn {
+    width: 32px;
+    height: 32px;
+  }
+  .top-btn img {
+    width: 18px;
+    height: 18px;
+  }
+  /* 棋盘外圈描边 4px：内缩收到 4px 刚好容下描边，把宽度全让给棋盘 */
+  .board-wrap { padding: var(--sp-1); }
+  .bottom-panel { margin-bottom: var(--sp-2); }
+}
+
+/* ============================================================
  * 宽屏（≥860px）：左「展示区 + 棋盘」/ 右「信息区」
  * 信息区两块常驻，宝石与技能不再互相遮挡
  * ============================================================ */
@@ -368,10 +446,9 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
   }
   .board-wrap {
     grid-area: board;
-    /* 宽屏同样要留提示带，否则提示条会压住棋盘最后一行 */
-    padding: 0 0 var(--tip-h);
   }
-  /* 棋盘尺寸由 .board-wrap 的 100cqh 自动收敛，宽屏无需单独覆盖 */
+  /* 棋盘尺寸由 .board-wrap 的 100cqh 自动收敛，宽屏无需单独覆盖；
+     提示浮层同样挂在 .board-box 上，宽屏与竖屏行为一致 */
 
   .side-panels {
     grid-area: side;
