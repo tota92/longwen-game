@@ -3,7 +3,7 @@
   "format": "png",
   "alpha": true,
   "style": "魔幻纹章风格：金质符文环 + 深紫底盘 + 元素光晕",
-  "count": 58,
+  "count": 62,
   "layout": "grouped-subdirs",
   "dirs": {
     "element": "elements",
@@ -175,7 +175,7 @@
       "name": "火焰之心",
       "group": "relic",
       "dir": "relics",
-      "usage": "遗物：火属性技能伤害 +30%",
+      "usage": "遗物：火元素造成的伤害 +25%（宝石与技能）",
       "bytes": 18388
     },
     {
@@ -183,7 +183,7 @@
       "name": "寒冰之触",
       "group": "relic",
       "dir": "relics",
-      "usage": "遗物：冻结持续时间 +1 回合",
+      "usage": "遗物：冻结持续时间 +1 回合；被冻结的敌人受到伤害 +15%",
       "bytes": 19635
     },
     {
@@ -191,7 +191,7 @@
       "name": "自然共鸣",
       "group": "relic",
       "dir": "relics",
-      "usage": "遗物：每消除 5 个木宝石回复 3 生命",
+      "usage": "遗物：每消除 5 个木属性宝石，获得 3 点护盾（上限 20）",
       "bytes": 18708
     },
     {
@@ -207,7 +207,7 @@
       "name": "幸运骰子",
       "group": "relic",
       "dir": "relics",
-      "usage": "遗物：有效交换 20% 概率不消耗回合",
+      "usage": "遗物：有效交换 15% 概率不消耗回合",
       "bytes": 19250
     },
     {
@@ -231,8 +231,40 @@
       "name": "宝石精通",
       "group": "relic",
       "dir": "relics",
-      "usage": "遗物：基础宝石伤害 +2",
+      "usage": "遗物：4 连及以上的消除波伤害 +40%",
       "bytes": 19373
+    },
+    {
+      "id": "relic_weak_hunter",
+      "name": "弱点猎手",
+      "group": "relic",
+      "dir": "relics",
+      "usage": "遗物：命中弱点的伤害倍率 1.5 → 1.8",
+      "bytes": 19748
+    },
+    {
+      "id": "relic_arcane_echo",
+      "name": "奥术回响",
+      "group": "relic",
+      "dir": "relics",
+      "usage": "遗物：技能石伤害 +40%，宝石消除伤害 -15%",
+      "bytes": 20430
+    },
+    {
+      "id": "relic_bomb_frenzy",
+      "name": "炸弹狂潮",
+      "group": "relic",
+      "dir": "relics",
+      "usage": "遗物：炸弹石范围 3×3 → 5×5，炸弹波伤害 +20%",
+      "bytes": 18878
+    },
+    {
+      "id": "relic_iron_wall",
+      "name": "铁壁",
+      "group": "relic",
+      "dir": "relics",
+      "usage": "遗物：过量治疗转化为护盾（上限 20）",
+      "bytes": 18924
     },
     {
       "id": "enemy_slime",

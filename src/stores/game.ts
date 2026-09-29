@@ -19,17 +19,24 @@ import {
   calcSkillDamage,
   calcWaveDamage,
   createEnemyState,
+  elementCounterOf,
   enemyDead,
-  resolvePattern
+  resolvePattern,
+  tryEnrage
 } from '@/core/battle'
 import {
   ANIM,
+  BOARD_SIZE,
+  chapterAtkMult,
+  chapterHpMult,
   DDA_FAIL_TIMES,
   ELEMENT_INFO,
   GEM_FROZEN_TURNS,
   MAX_RELICS,
+  PASSIVE_HEAL_PER_TURN,
   PLAYER_MAX_HP,
   RELIC_CHOICES,
+  skillChapterScale,
   TUTORIAL_MATCH_TARGET
 } from '@/config/constants'
 import { getLevel } from '@/config/levels'
@@ -182,15 +189,60 @@ export const useGameStore = defineStore('game', () => {
 
   const hasRelic = (id: string) => battle.relics.includes(id)
 
+  /* ---------------- V2：元素克制 / 护甲 / 火加成（伤害结算共用） ---------------- */
+
+  /** 元素克制信息（弱点猎手遗物把弱点倍率 1.5 提升到 1.8） */
+  const enemyCounter = computed(() =>
+    elementCounterOf(battle.enemy ? getEnemy(battle.enemy.configId) : null, hasRelic('relic_weak_hunter'))
+  )
+
+  /** 敌人当前阶段护甲（按消除波减免伤害，下限 1） */
+  function enemyArmor(): number {
+    const e = battle.enemy
+    if (!e) return 0
+    return e.armor?.[e.phase - 1] ?? 0
+  }
+
+  /** 火元素伤害加成（火焰之心遗物 + 支援被动，加算） */
+  const fireBonus = computed(
+    () =>
+      (hasRelic('relic_heart_of_flame') ? 0.25 : 0) +
+      (supports.value.some((h) => h.passiveId === 'fireSkillUp') ? 0.1 : 0)
+  )
+
+  /** 遗物护盾累计上限（自然共鸣 / 铁壁） */
+  const RELIC_SHIELD_CAP = 20
+
   /** 宝石展示区条目（6 元素 + 熟练度等级/进度），由本局消除量实时推导 */
   const gemEntries = computed(() => buildGemEntries(battle.gemStats))
 
-  /** 技能信息区上下文：遗物 / 支援被动 / 低血（绝境反击条件） */
+  /** 技能信息区上下文：遗物 / 支援被动 / 低血（绝境反击条件）/ 当前敌人克制与护甲 */
   const skillContext = computed(() => ({
     relics: [...battle.relics],
     firePassive: supports.value.some((h) => h.passiveId === 'fireSkillUp'),
-    lowHP: battle.playerHP > 0 && battle.playerHP < PLAYER_MAX_HP * 0.3
+    freezePassive: supports.value.some((h) => h.passiveId === 'freezeUp'),
+    lowHP: battle.playerHP > 0 && battle.playerHP < PLAYER_MAX_HP * 0.3,
+    // V2：技能面板展示的真实伤害需包含元素克制 / 护甲 / 章节缩放（与战斗结算同源）
+    counter: enemyCounter.value,
+    armor: enemyArmor(),
+    chapterScale: battle.level ? skillChapterScale(battle.level.gemPower) : 1
   }))
+
+  /**
+   * 敌人属性面板（V2 战斗舞台展示）：元素 / 弱点 / 抗性 / 当前阶段护甲。
+   * 数据源为敌人配置表（随版本更新），护甲取当前阶段值（含变体加成）。
+   */
+  const enemyAttributes = computed(() => {
+    const e = battle.enemy
+    if (!e) return null
+    const cfg = getEnemy(e.configId)
+    return {
+      element: cfg.element,
+      weak: cfg.weak,
+      resist: cfg.resist,
+      armor: e.armor?.[e.phase - 1] ?? 0
+    }
+  })
 
   /** 棋盘上某元素的可交互宝石数量（宝石区"使用"时的反馈文案） */
   function countElementOnBoard(el: ElementType): number {
@@ -215,9 +267,12 @@ export const useGameStore = defineStore('game', () => {
         ? '交换相邻两颗宝石，凑齐 3 个同元素即可消除'
         : '干得漂亮！'
     }
-    if (lv.tutorial === 'intro4') return '提示：4 个相同宝石连成一线会生成技能石，点击它可直接释放！'
+    if (lv.tutorial === 'intro4') {
+      // V2：1-2 同时承担"元素克制"教学——史莱姆弱火，与主战炎龙骑士天然对齐
+      return '提示：打弱点伤害 ×1.5（史莱姆弱火）；4 个相同宝石连成一线会生成技能石，点击可释放！'
+    }
     if (lv.tutorial === 'intro5') {
-      return '提示：Boss 蓄力时会出现进度条，抢输出把进度打满即可打断它的大招！'
+      return '提示：幼龙弱光；Boss 蓄力时抢输出把进度条打满即可打断它的大招！'
     }
     return null
   })
@@ -292,7 +347,11 @@ export const useGameStore = defineStore('game', () => {
       baseCountdown: raw.baseCountdown ?? phaseCountdown[raw.phase - 1] ?? cfg.countdown,
       pattern: raw.pattern ?? resolvePattern(cfg, raw.phase),
       patternIndex: raw.patternIndex ?? 0,
-      charging: raw.charging ?? null
+      charging: raw.charging ?? null,
+      // V2 新增字段：旧存档缺失时按配置表补齐（护甲随阶段），护盾/狂怒从零开始
+      armor: raw.armor ?? cfg.armor ?? cfg.phaseHP.map(() => 0),
+      shield: raw.shield ?? 0,
+      enraged: raw.enraged ?? false
     }
   }
 
@@ -517,12 +576,14 @@ export const useGameStore = defineStore('game', () => {
     saveSnapshot()
   }
 
-  /** 生成一波敌人（冰霜女巫支援被动：初始倒计时 +1） */
+  /** 生成一波敌人（V2：按章节成长放大 HP / 攻击，见 chapterHpMult / chapterAtkMult） */
   function spawnWave(index: number): void {
     const level = battle.level!
     const wave = level.waves[index]
-    const enemyCdUp = supports.value.some((h) => h.passiveId === 'enemyCdUp')
-    battle.enemy = createEnemyState(wave, { enemyCdUp })
+    battle.enemy = createEnemyState(wave, {
+      hpMult: chapterHpMult(level.gemPower),
+      atkMult: chapterAtkMult(level.chapter)
+    })
     battle.waveIndex = index
     battle.combo = 0
     // 新敌人入场：清掉上一波的受击/死亡姿态与残留特效
@@ -583,7 +644,7 @@ export const useGameStore = defineStore('game', () => {
   // ================================================================
 
   /**
-   * 玩家对敌人造成伤害（含 Boss 阶段转换，REQ-ENEMY-003；蓄力打断见 5.4）
+   * 玩家对敌人造成伤害（含 V2 冻结增伤 / 凝甲护盾 / 阶段转换 / 狂怒）
    * @param source 'hero' = 英雄主动出手（切攻击态 + 命中特效）；'dot' = 灼烧/中毒等持续伤害
    *               （只有怪物受击反馈，英雄不做出手动作）
    */
@@ -594,9 +655,20 @@ export const useGameStore = defineStore('game', () => {
   ): Promise<void> {
     const enemy = battle.enemy
     if (!enemy || dmg <= 0) return
-    enemy.hp -= dmg
-    battle.totalDamage += dmg
-    addFloat(`-${dmg}`, kind)
+    // 寒冰之触遗物：被冻结的敌人受到伤害 +15%
+    let final = dmg
+    if (hasRelic('relic_ice_touch') && enemy.frozen > 0) final = Math.floor(dmg * 1.15)
+    // 凝甲护盾先于血量抵扣（V2）
+    let rest = final
+    if (enemy.shield > 0) {
+      const absorbed = Math.min(enemy.shield, rest)
+      enemy.shield -= absorbed
+      rest -= absorbed
+      if (absorbed > 0) addFloat(`护盾抵挡 ${absorbed}`, 'info')
+    }
+    enemy.hp -= rest
+    battle.totalDamage += rest
+    if (rest > 0) addFloat(`-${rest}`, kind)
     // 战斗展示区反馈：命中特效落在挨打的一方身上（side = 出手方，组件内部会取反）
     if (source === 'hero') setActorAction('hero', 'attack')
     setActorAction('enemy', 'hurt')
@@ -605,7 +677,7 @@ export const useGameStore = defineStore('game', () => {
 
     // 蓄力打断：蓄力期间累计承受伤害达到阈值即打断（Boss 蓄力失败并吃反噬）
     if (enemy.charging) {
-      enemy.charging.taken += dmg
+      enemy.charging.taken += rest
       if (enemy.charging.taken >= enemy.charging.interrupt) {
         await interruptCharge(enemy)
       }
@@ -622,6 +694,12 @@ export const useGameStore = defineStore('game', () => {
         await sleep(200)
         damagePlayer(enemy.phaseBlastDamage)
       }
+    }
+
+    // 阶段内狂怒（V2）：半数血后攻击力一次性提升
+    if (tryEnrage(enemy)) {
+      addFloat(`${enemy.display} 狂怒了！攻击提升`, 'info')
+      doShake()
     }
 
     // 彻底死亡：立绘切到倒地消散姿态（阶段转换后才会走到这里）
@@ -712,6 +790,9 @@ export const useGameStore = defineStore('game', () => {
     }
   }
 
+  /**
+   * 玩家治疗。铁壁遗物：过量治疗转化为护盾（累计上限 20，V2）
+   */
   function healPlayer(amount: number, reason?: string): void {
     if (battle.playerHP <= 0) return
     const healed = Math.min(PLAYER_MAX_HP - battle.playerHP, amount)
@@ -721,15 +802,25 @@ export const useGameStore = defineStore('game', () => {
       audio.play('heal')
       spawnHitFx('heal', 'hero', '#7dedb2')
     }
+    const overheal = amount - healed
+    if (overheal > 0 && hasRelic('relic_iron_wall')) {
+      gainShield(overheal, RELIC_SHIELD_CAP, '铁壁')
+    }
   }
 
-  function gainShield(amount: number): void {
-    battle.playerShield += amount
-    addFloat(`护盾 +${amount}`, 'info')
+  /**
+   * 获得护盾（上限 cap 仅约束遗物来源的累计护盾，技能护盾不受限）
+   */
+  function gainShield(amount: number, cap = Infinity, reason?: string): void {
+    const room = cap === Infinity ? amount : Math.max(0, cap - battle.playerShield)
+    const gain = Math.min(room, amount)
+    if (gain <= 0) return
+    battle.playerShield += gain
+    addFloat(`护盾 +${gain}${reason ? ` (${reason})` : ''}`, 'info')
     spawnHitFx('heal', 'hero', '#68d8ff')
   }
 
-  /** 释放主战英雄技能（技能石触发，REQ-HERO-002） */
+  /** 释放主战英雄技能（技能石触发，REQ-HERO-002；V2：元素克制/护甲/章节缩放/奥术回响） */
   async function castHeroSkill(which: 'small' | 'ultimate'): Promise<void> {
     const hero = leader.value
     const skill: SkillEffect = which === 'small' ? hero.skill4 : hero.skill5
@@ -751,17 +842,25 @@ export const useGameStore = defineStore('game', () => {
     const firePassive = supports.value.some((h) => h.passiveId === 'fireSkillUp')
     const heartOfFlame = hasRelic('relic_heart_of_flame')
     const desperate = hasRelic('relic_desperate_counter') && battle.playerHP < PLAYER_MAX_HP * 0.3
+    const arcaneEcho = hasRelic('relic_arcane_echo')
     const dmg = calcSkillDamage(skill.damage, hero.element, {
       firePassive,
       heartOfFlame,
-      desperate
+      desperate,
+      counter: enemyCounter.value,
+      armor: enemyArmor(),
+      arcaneEcho,
+      chapterScale: skillChapterScale(battle.level!.gemPower)
     })
     // 遗物/被动协同生效时飘字说明加成来源（REQ-FEEL-004）
     if (hero.element === 'fire' && heartOfFlame) {
-      addFloat('火焰之心：火技能伤害 +30%', 'info')
+      addFloat('火焰之心：火元素伤害 +25%', 'info')
     }
     if (hero.element === 'fire' && firePassive) {
-      addFloat('炎龙骑士支援：火技能伤害 +15%', 'info')
+      addFloat('炎龙骑士支援：火元素伤害 +10%', 'info')
+    }
+    if (arcaneEcho) {
+      addFloat('奥术回响：技能伤害 +40%', 'info')
     }
     if (desperate) {
       addFloat('绝境反击：全部伤害 +50%', 'info')
@@ -769,6 +868,11 @@ export const useGameStore = defineStore('game', () => {
     if (dmg > 0) await dealDamageToEnemy(dmg, 'skill')
     if (skill.heal) healPlayer(skill.heal)
     if (skill.shield) gainShield(skill.shield)
+    if (skill.clearDebuff && (battle.playerBurn || battle.playerPoison)) {
+      battle.playerBurn = null
+      battle.playerPoison = null
+      addFloat('负面状态已清除', 'info')
+    }
     if (skill.burn) {
       // 燃烧可叠加（REQ-HERO-101）
       const cur = battle.enemy?.burn
@@ -780,10 +884,12 @@ export const useGameStore = defineStore('game', () => {
       }
     }
     if (skill.freeze && battle.enemy) {
-      // 寒冰之触遗物：冻结 +1 回合
-      const bonus = hasRelic('relic_ice_touch') ? 1 : 0
-      battle.enemy.frozen += skill.freeze + bonus
-      addFloat('敌人被冻结！', 'info')
+      // 冻结延长：寒冰之触遗物 +1 回合；冰霜女巫支援被动（freezeUp）+1 回合
+      const relicBonus = hasRelic('relic_ice_touch') ? 1 : 0
+      const passiveBonus = supports.value.some((h) => h.passiveId === 'freezeUp') ? 1 : 0
+      const total = skill.freeze + relicBonus + passiveBonus
+      battle.enemy.frozen += total
+      addFloat(`敌人被冻结 ${total} 回合！`, 'info')
     }
   }
 
@@ -859,6 +965,8 @@ export const useGameStore = defineStore('game', () => {
   async function resolveTurn(initial?: { seeds: Pos[] }): Promise<void> {
     const board = battle.board!
     battle.combo = 0
+    // 炸弹狂潮遗物：炸弹展开半径 3×3 → 5×5（V2）
+    const bombRadius = hasRelic('relic_bomb_frenzy') ? 2 : 1
 
     // ---- 消除连锁循环 ----
     let pendingSeeds: Pos[] | null = initial?.seeds ?? null
@@ -878,14 +986,14 @@ export const useGameStore = defineStore('game', () => {
       battle.maxComboInBattle = Math.max(battle.maxComboInBattle, battle.combo)
 
       // 消除动画：先标记 popping 播放收缩动画，再真正清除
-      const preview = GameBoard.expandBombTargets(board.grid, seeds)
+      const preview = GameBoard.expandBombTargets(board.grid, seeds, bombRadius)
       for (const p of preview.clear) {
         const cell = board.grid[p.row][p.col]
         if (cell) cell.popping = true
       }
       await sleep(ANIM.pop)
 
-      const { cleared, specialsTriggered } = board.commitClear(seeds, groups)
+      const { cleared, specialsTriggered } = board.commitClear(seeds, groups, { bombRadius })
 
       // 宝石伤害：仅普通宝石计数（技能石走技能结算）
       const gems = cleared.filter((c) => !c.special)
@@ -899,7 +1007,14 @@ export const useGameStore = defineStore('game', () => {
             gemPower: battle.level!.gemPower,
             leaderElement: leader.value.element,
             sameBonusElement: sameBonusElement.value,
-            gemMasteryBonus: hasRelic('relic_gem_mastery') ? 2 : 0,
+            counter: enemyCounter.value,
+            armor: enemyArmor(),
+            fireBonus: fireBonus.value,
+            arcanePenalty: hasRelic('relic_arcane_echo'),
+            // 宝石精通：4 连及以上的消除波 +40%（按波判定）
+            bigMatchBonus: hasRelic('relic_gem_mastery') && groups.some((g) => g.length >= 4),
+            // 炸弹狂潮：炸弹波伤害 +20%
+            bombBonus: hasRelic('relic_bomb_frenzy') && specialsTriggered.some((s) => s.special === 'bomb'),
             desperate: hasRelic('relic_desperate_counter') && battle.playerHP < PLAYER_MAX_HP * 0.3
           },
           hasRelic('relic_chain_reaction')
@@ -923,12 +1038,12 @@ export const useGameStore = defineStore('game', () => {
         }
       }
 
-      // 自然共鸣遗物：每消除 5 个木宝石回复 3 生命
+      // 自然共鸣遗物：每消除 5 个木宝石获得 3 点护盾（V2 由回血改为护盾，累计上限 20）
       const woodCount = gems.filter((g) => g.element === 'wood').length
       battle.woodGemCleared += woodCount
       while (battle.woodGemCleared >= 5 && hasRelic('relic_nature_resonance')) {
         battle.woodGemCleared -= 5
-        healPlayer(3, '自然共鸣')
+        gainShield(3, RELIC_SHIELD_CAP, '自然共鸣')
       }
 
       // 表现：连击震动 + 音阶升高（REQ-FEEL-001）
@@ -951,9 +1066,9 @@ export const useGameStore = defineStore('game', () => {
   async function endOfTurn(): Promise<void> {
     battle.turnCount++
 
-    // 森林德鲁伊支援被动：每回合结束回复 3 生命
+    // 森林德鲁伊支援被动：每回合结束回复生命（V2.2：3 → 2，见 PASSIVE_HEAL_PER_TURN）
     if (supports.value.some((h) => h.passiveId === 'healPerTurn')) {
-      healPlayer(3)
+      healPlayer(PASSIVE_HEAL_PER_TURN)
     }
 
     // 玩家身上的灼烧/中毒结算（Boss 施加，REQ-ENEMY-002）
@@ -1072,6 +1187,26 @@ export const useGameStore = defineStore('game', () => {
   }
 
   /**
+   * 污染（V2）：把 count 颗随机宝石转为指定元素（跳过冻结宝石与技能石），
+   * 返回实际转换数量。与敌人抗性叠加，构成"看起来很诱人、其实很亏"的陷阱。
+   */
+  function corruptBoardGems(count: number, element: ElementType): number {
+    const board = battle.board
+    if (!board) return 0
+    let done = 0
+    let guard = 0
+    while (done < count && guard++ < count * 30) {
+      const r = Math.floor(Math.random() * BOARD_SIZE)
+      const c = Math.floor(Math.random() * BOARD_SIZE)
+      const cell = board.grid[r]?.[c]
+      if (!cell || cell.frozen > 0 || cell.special || cell.element === element) continue
+      cell.element = element
+      done++
+    }
+    return done
+  }
+
+  /**
    * 敌人行动（REQ-ENEMY-002 / 5.4 Boss 战机制；前摇 0.5 秒预警）
    * 优先级：蓄力释放 > 行动轮换 > 旧版单技能（未配置轮换的小怪）
    * @returns 本次行动后要使用的倒计时（null = 用 baseCountdown）；蓄力时返回 window
@@ -1125,6 +1260,22 @@ export const useGameStore = defineStore('game', () => {
           damagePlayer(action.damage)
           healEnemy(action.heal)
           break
+        case 'corrupt': {
+          // 污染（V2）：造成伤害并把随机宝石转为敌人元素；伤害缺省取当前攻击力
+          // （随变体/章节成长，避免固定值与敌人强度脱节）
+          damagePlayer(action.damage ?? enemy.attack)
+          const cfg = getEnemy(enemy.configId)
+          const n = corruptBoardGems(action.count, cfg.element)
+          addFloat(`${action.name}：${n} 颗宝石变为${ELEMENT_INFO[cfg.element].name}元素`, 'info')
+          break
+        }
+        case 'shield': {
+          // 凝甲（V2）：附加可吸收伤害的护盾，惩罚慢节奏、奖励爆发
+          enemy.shield += action.amount
+          addFloat(`${enemy.display} 凝甲 +${action.amount}`, 'info')
+          spawnHitFx('cast', 'enemy', enemyColor())
+          break
+        }
         case 'charge':
           enemy.charging = {
             name: action.name,
@@ -1169,6 +1320,22 @@ export const useGameStore = defineStore('game', () => {
   // 波次与遗物（REQ-RELIC-002/004）
   // ================================================================
 
+  /**
+   * 遗物三选一候选（V2）：候选保证跨流派（至少来自 2 个 type），
+   * 避免"三个都是同类"的无效选择；已持有遗物不进池（REQ-RELIC-004）。
+   */
+  function rollRelicOffers(): string[] {
+    const pool = RELICS.filter((r) => !battle.relics.includes(r.id))
+    const picks = sampleN(pool, RELIC_CHOICES).map((r) => r.id)
+    const types = new Set(picks.map((id) => getRelic(id).type))
+    if (types.size >= 2) return picks
+    // 全是同类：把最后一个名额换成其他流派的随机遗物
+    const others = pool.filter((r) => !picks.includes(r.id) && !types.has(r.type))
+    if (others.length === 0) return picks
+    const swap = others[Math.floor(Math.random() * others.length)]
+    return [...picks.slice(0, picks.length - 1), swap.id]
+  }
+
   /** 本波敌人清空：进入下一波（遗物三选一）或通关 */
   async function waveCleared(): Promise<void> {
     const level = battle.level!
@@ -1179,8 +1346,7 @@ export const useGameStore = defineStore('game', () => {
     }
     // 波间遗物三选一（上限 3 个，REQ-RELIC-003）
     if (battle.relics.length < MAX_RELICS) {
-      const pool = RELICS.filter((r) => !battle.relics.includes(r.id))
-      relicOffers.value = sampleN(pool, RELIC_CHOICES).map((r) => r.id)
+      relicOffers.value = rollRelicOffers()
       battle.phase = 'relicSelect'
       battle.canInteract = false
       saveSnapshot()
@@ -1285,6 +1451,7 @@ export const useGameStore = defineStore('game', () => {
     hasHiddenGuide,
     gemEntries,
     skillContext,
+    enemyAttributes,
     // 动作
     setScreen,
     startLevel,

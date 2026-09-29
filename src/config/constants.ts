@@ -53,6 +53,73 @@ export const LEADER_ELEMENT_BONUS = 1.2
 /** 同元素支援加成：该元素宝石基础伤害 +1（REQ-HERO-004） */
 export const SAME_ELEMENT_GEM_BONUS = 1
 
+/**
+ * 森林德鲁伊支援被动：每回合结束回复的生命值（V2.2 由 3 下调为 2）。
+ * 3/回合在 20+ 回合的 Boss 战里等价于 60+ 点有效生命，是"硬核档"里
+ * 最容易被忽视的续航来源——下调后治疗仍有效，但不再能单挑耗死普通怪。
+ */
+export const PASSIVE_HEAL_PER_TURN = 2
+
+/* ============================================================
+ * 元素克制（V2 OPT-1）
+ * ============================================================ */
+
+/**
+ * 元素克制倍率：命中敌人弱点 / 撞上敌人抗性。
+ * 与主战元素加成、连击倍率乘算；未标注克制关系的元素按 1.0 结算，
+ * 因此弱点倍率是"奖励"而不是"门槛"——不存在没得消就卡死的局面。
+ */
+export const ELEMENT_MULT = { weak: 1.5, resist: 0.5 } as const
+
+/**
+ * 元素克制轮盘（V2 唯一事实来源）：
+ * 火 → 木 → 雷 → 水 → 火（我克制的元素），光 ↔ 暗 互克。
+ * 敌人配置的 weak 必须是「克制自身的元素」，resist 取自「自身克制的元素」
+ * （光/暗 允许用自身元素作为抗性），该约束由冒烟测试自动校验。
+ */
+export const ELEMENT_COUNTER: Record<ElementType, ElementType> = {
+  fire: 'wood',
+  wood: 'thunder',
+  thunder: 'water',
+  water: 'fire',
+  light: 'dark',
+  dark: 'light'
+}
+
+/** 反查：克制自身的元素（= 敌人配置里的 weak） */
+export function counterOf(element: ElementType): ElementType {
+  return (Object.keys(ELEMENT_COUNTER) as ElementType[]).find(
+    (k) => ELEMENT_COUNTER[k] === element
+  )!
+}
+
+/** 遗物「弱点猎手」：弱点倍率 1.5 → 1.8 */
+export const WEAK_MULT_HUNTER = 1.8
+
+/* ============================================================
+ * 章节成长（V2 OPT-2）
+ * ============================================================ */
+
+/**
+ * 敌人 HP 章节成长：与玩家宝石攻击同速率放大（宝石攻击 ÷ 2）。
+ * 第 1 章 ×1.0、第 2 章 ×1.5、第 3 章 ×2.0……
+ * 理由：宝石攻击每章 +1（第 1→2 章即 +50% DPS），
+ * 敌人血量必须同速率跟涨，否则三章以后玩家的 DPS 增长会彻底稀释打击感。
+ */
+export function chapterHpMult(gemPower: number): number {
+  return gemPower / 2
+}
+
+/** 敌人攻击章节成长：第 1 章 ×1.0、第 2 章 ×1.25、第 3 章 ×1.5…… */
+export function chapterAtkMult(chapter: number): number {
+  return 1 + 0.25 * (chapter - 1)
+}
+
+/** 技能伤害章节缩放：技能表为基础值，实际伤害 ×(本章宝石攻击 ÷ 2) */
+export function skillChapterScale(gemPower: number): number {
+  return gemPower / 2
+}
+
 /** 单关遗物上限（REQ-RELIC-003） */
 export const MAX_RELICS = 3
 
@@ -93,8 +160,13 @@ export const ANIM = {
   hitFx: 700
 }
 
-/** 数值换算锚点（REQ-DAMAGE）：1 回合标准输出 = 10 伤害 */
-export const DAMAGE_ANCHOR = 10
+/**
+ * 数值锚点（REQ-DAMAGE）：1 回合标准输出 = 12 点伤害（V2 修订）。
+ * V1 锚点为 10，但模拟实测（真实棋盘引擎 + 贪婪策略）每回合实际消除约 5 颗宝石、
+ * 折算约 12 点伤害；锚点取实测值后，敌人数值与技能定价才有统一标尺：
+ *   普通敌人 HP ≈ 5×锚点 ｜ 四消技能 ≈ 2×锚点 ｜ 五消技能 ≈ 3.5~4×锚点
+ */
+export const DAMAGE_ANCHOR = 12
 
 /* ============================================================
  * 宝石展示区（REQ-UI 宝石系统展示）
@@ -126,8 +198,9 @@ export const SKILL_LEVEL_MAX = 1 + MAX_RELICS
 
 /** 技能强化遗物说明（技能信息区的"升级入口"清单） */
 export const SKILL_UPGRADE_RELICS: { id: string; desc: string }[] = [
-  { id: 'relic_heart_of_flame', desc: '火属性技能伤害 +30%' },
-  { id: 'relic_ice_touch', desc: '技能附带的冻结 +1 回合' },
+  { id: 'relic_heart_of_flame', desc: '火元素造成的伤害 +25%（宝石与技能）' },
+  { id: 'relic_ice_touch', desc: '冻结持续时间 +1 回合，冻结目标受到的伤害 +15%' },
+  { id: 'relic_arcane_echo', desc: '技能石伤害 +40%（宝石消除伤害 -15%）' },
   { id: 'relic_desperate_counter', desc: '生命低于 30% 时全部伤害 +50%' },
   { id: 'relic_element_resonance', desc: '四消额外产出技能石概率 +30%' }
 ]

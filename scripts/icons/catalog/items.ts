@@ -131,7 +131,7 @@ const DESPERATE_COUNTER = `
   ${spark(62, 76, 11, '#ff6b70', 0.65)}
 `
 
-/** 宝石精通：切面宝石 + 环绕碎晶（基础宝石伤害 +2） */
+/** 宝石精通：切面宝石 + 环绕碎晶（4 连及以上消除波 +40%） */
 const GEM_MASTERY = `
   <path d="M128 42 L192 100 L128 214 L64 100 Z" fill="url(#ACC)"/>
   <path d="M128 42 L192 100 L128 118 L64 100 Z" fill="#ffffff" opacity="0.32"/>
@@ -149,26 +149,90 @@ const GEM_MASTERY = `
   ${spark(128, 92, 15, '#ffffff', 0.6)}
 `
 
+/** 弱点猎手：准星套住被击穿的宝石（命中弱点倍率提升） */
+const WEAK_HUNTER = `
+  <circle cx="128" cy="128" r="60" fill="none" stroke="url(#GOLD)" stroke-width="6"/>
+  <circle cx="128" cy="128" r="60" fill="none" stroke="url(#ACC)" stroke-width="14" opacity="0.22"/>
+  <g stroke="url(#GOLD)" stroke-width="10" stroke-linecap="round">
+    <path d="M128 44V74 M128 182V212 M44 128H74 M182 128H212"/>
+  </g>
+  <path d="M128 82 L168 116 L128 178 L88 116 Z" fill="url(#ACC)"/>
+  <path d="M128 82 L168 116 L128 134 L88 116 Z" fill="#ffffff" opacity="0.3"/>
+  <g stroke="#ffffff" stroke-opacity="0.45" stroke-width="2.4" fill="none">
+    <path d="M128 82 L128 134 M88 116 L128 134 L168 116 M128 134 L128 178"/>
+  </g>
+  <path d="M128 82 L168 116 L128 178 L88 116 Z" fill="none" stroke="url(#GOLD)" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M118 96 L136 128 L118 160" fill="none" stroke="#2a0508" stroke-width="6" stroke-linecap="round" opacity="0.75"/>
+  ${spark(196, 76, 13, '#ffc2c4', 0.85)}
+  ${spark(58, 186, 11, '#ffc2c4', 0.6)}
+`
+
+/** 奥术回响：法术宝珠 + 层叠回响弧（技能伤害 +40%，宝石伤害 -15%） */
+const ARCANE_ECHO = `
+  <g fill="none" stroke="url(#GOLD)" stroke-width="7" stroke-linecap="round">
+    <path d="M70 96 A 66 66 0 0 1 186 96"/>
+    <path d="M86 70 A 96 96 0 0 1 170 70"/>
+    <path d="M104 46 A 124 124 0 0 1 152 46"/>
+  </g>
+  <g fill="none" stroke="url(#ACC)" stroke-width="6" opacity="0.55">
+    <circle cx="128" cy="146" r="72"/>
+    <circle cx="128" cy="146" r="54"/>
+  </g>
+  <circle cx="128" cy="146" r="34" fill="url(#ACC)"/>
+  <circle cx="128" cy="146" r="34" fill="none" stroke="#ffffff" stroke-width="3.5" opacity="0.5"/>
+  <ellipse cx="115" cy="133" rx="12" ry="9" fill="#ffffff" opacity="0.5" transform="rotate(-30 115 133)"/>
+  ${spark(64, 176, 12, '#d5cfff', 0.75)}
+  ${spark(198, 184, 12, '#d5cfff', 0.7)}
+`
+
+/** 炸弹狂潮：爆裂星芒 + 炸弹（炸弹范围 5×5、炸弹波伤害提升） */
+const BOMB_FRENZY = `
+  <path d="M128 44 L141 84 L181 70 L161 104 L201 118 L161 132 L181 166 L141 152 L128 192 L115 152 L75 166 L95 132 L55 118 L95 104 L75 70 L115 84 Z"
+    fill="url(#ACC)" opacity="0.5"/>
+  <circle cx="128" cy="132" r="44" fill="url(#ACC)"/>
+  <circle cx="128" cy="132" r="44" fill="none" stroke="url(#GOLD)" stroke-width="6"/>
+  <path d="M128 88 L128 78 C128 62 142 58 150 46" fill="none" stroke="url(#GOLD)" stroke-width="8" stroke-linecap="round"/>
+  <ellipse cx="112" cy="118" rx="11" ry="8" fill="#ffffff" opacity="0.45" transform="rotate(-30 112 118)"/>
+  ${spark(152, 40, 14, '#ffdf7a', 0.95)}
+  ${spark(62, 176, 11, '#ffc59b', 0.7)}
+  ${spark(198, 188, 12, '#ffc59b', 0.8)}
+`
+
+/** 铁壁：铁盾 + 治愈十字（过量治疗转化为护盾） */
+const IRON_WALL = `
+  <path d="M128 38 C154 38 178 48 190 58 C190 118 178 182 128 218 C78 182 66 118 66 58 C78 48 102 38 128 38 Z" fill="url(#ACC)"/>
+  <path d="M128 38 C154 38 178 48 190 58 C190 118 178 182 128 218 C78 182 66 118 66 58 C78 48 102 38 128 38 Z" fill="none" stroke="url(#GOLD)" stroke-width="7"/>
+  <path d="M128 60 C148 60 166 67 175 74 C175 122 166 174 128 202 C90 174 81 122 81 74 C90 67 108 60 128 60 Z" fill="#ffffff" opacity="0.12"/>
+  <g>
+    <rect x="102" y="110" width="52" height="16" rx="8" fill="#125230"/>
+    <rect x="120" y="92" width="16" height="52" rx="8" fill="#125230"/>
+    <rect x="104" y="112" width="48" height="12" rx="6" fill="#8bf0bb"/>
+    <rect x="122" y="94" width="12" height="48" rx="6" fill="#8bf0bb"/>
+  </g>
+  ${spark(196, 72, 12, '#e6dfcc', 0.8)}
+  ${spark(58, 180, 11, '#e6dfcc', 0.6)}
+`
+
 export const RELIC_ICONS: IconDef[] = [
   {
     id: 'relic_heart_of_flame',
     name: '火焰之心',
     group: 'relic',
-    usage: '遗物：火属性技能伤害 +30%',
+    usage: '遗物：火元素造成的伤害 +25%（宝石与技能）',
     svg: badgeIcon('relic_heart_of_flame', ELEMENT_ACCENT.fire, HEART_OF_FLAME, 0.88)
   },
   {
     id: 'relic_ice_touch',
     name: '寒冰之触',
     group: 'relic',
-    usage: '遗物：冻结持续时间 +1 回合',
+    usage: '遗物：冻结持续时间 +1 回合；被冻结的敌人受到伤害 +15%',
     svg: badgeIcon('relic_ice_touch', ACCENT.frost, ICE_TOUCH, 0.9)
   },
   {
     id: 'relic_nature_resonance',
     name: '自然共鸣',
     group: 'relic',
-    usage: '遗物：每消除 5 个木宝石回复 3 生命',
+    usage: '遗物：每消除 5 个木属性宝石，获得 3 点护盾（上限 20）',
     svg: badgeIcon('relic_nature_resonance', ELEMENT_ACCENT.wood, NATURE_RESONANCE, 0.9)
   },
   {
@@ -182,7 +246,7 @@ export const RELIC_ICONS: IconDef[] = [
     id: 'relic_lucky_dice',
     name: '幸运骰子',
     group: 'relic',
-    usage: '遗物：有效交换 20% 概率不消耗回合',
+    usage: '遗物：有效交换 15% 概率不消耗回合',
     svg: badgeIcon('relic_lucky_dice', ACCENT.gold, LUCKY_DICE, 0.86)
   },
   {
@@ -203,7 +267,35 @@ export const RELIC_ICONS: IconDef[] = [
     id: 'relic_gem_mastery',
     name: '宝石精通',
     group: 'relic',
-    usage: '遗物：基础宝石伤害 +2',
+    usage: '遗物：4 连及以上的消除波伤害 +40%',
     svg: badgeIcon('relic_gem_mastery', ACCENT.arcane, GEM_MASTERY, 0.88)
+  },
+  {
+    id: 'relic_weak_hunter',
+    name: '弱点猎手',
+    group: 'relic',
+    usage: '遗物：命中弱点的伤害倍率 1.5 → 1.8',
+    svg: badgeIcon('relic_weak_hunter', ACCENT.blood, WEAK_HUNTER, 0.86)
+  },
+  {
+    id: 'relic_arcane_echo',
+    name: '奥术回响',
+    group: 'relic',
+    usage: '遗物：技能石伤害 +40%，宝石消除伤害 -15%',
+    svg: badgeIcon('relic_arcane_echo', ACCENT.arcane, ARCANE_ECHO, 0.86)
+  },
+  {
+    id: 'relic_bomb_frenzy',
+    name: '炸弹狂潮',
+    group: 'relic',
+    usage: '遗物：炸弹石范围 3×3 → 5×5，炸弹波伤害 +20%',
+    svg: badgeIcon('relic_bomb_frenzy', ELEMENT_ACCENT.fire, BOMB_FRENZY, 0.86)
+  },
+  {
+    id: 'relic_iron_wall',
+    name: '铁壁',
+    group: 'relic',
+    usage: '遗物：过量治疗转化为护盾（上限 20）',
+    svg: badgeIcon('relic_iron_wall', ACCENT.bone, IRON_WALL, 0.86)
   }
 ]

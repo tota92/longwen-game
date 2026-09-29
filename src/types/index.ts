@@ -75,7 +75,7 @@ export interface HeroConfig {
   /** 五消技能（终极技能石触发） */
   skill5: SkillEffect
   /** 支援被动 ID（代码逻辑引用） */
-  passiveId: 'fireSkillUp' | 'enemyCdUp' | 'healPerTurn'
+  passiveId: 'fireSkillUp' | 'freezeUp' | 'healPerTurn'
   passiveDesc: string
   /** 头像图标 ID（256×256 透明 PNG，见 src/utils/icons.ts） */
   iconId: IconId
@@ -138,6 +138,13 @@ export type EnemyAction =
     }
   /** 汲取：造成伤害并回复自身生命 */
   | { kind: 'drain'; name: string; damage: number; heal: number; desc?: string }
+  /**
+   * 污染（V2）：把 count 颗随机宝石转为敌人自身元素，可附带伤害。
+   * 与抗性叠加形成"看起来很好消、其实很亏"的陷阱，改变棋盘构成。
+   */
+  | { kind: 'corrupt'; name: string; count: number; damage?: number; desc?: string }
+  /** 凝甲（V2）：为自身附加可吸收 amount 点伤害的护盾，惩罚慢节奏、奖励爆发 */
+  | { kind: 'shield'; name: string; amount: number; desc?: string }
 
 /** 敌人蓄力状态（Boss 战核心张力：必须抢输出打断，否则吃大招） */
 export interface EnemyCharge {
@@ -159,7 +166,16 @@ export interface EnemyCharge {
 export interface EnemyConfig {
   id: string
   name: string
-  /** 各阶段 HP（多阶段 Boss，长度即阶段数） */
+  /**
+   * 敌人元素（V2 元素克制系统）：自身的属性归属。
+   * 「污染」行动会把棋盘宝石转为该元素；UI 展示为敌人属性徽记。
+   */
+  element: ElementType
+  /** 弱点元素：命中造成 ×ELEMENT_MULT.weak 伤害（默认 1.5 倍） */
+  weak: ElementType
+  /** 抗性元素：命中造成 ×ELEMENT_MULT.resist 伤害（默认 0.5 倍） */
+  resist: ElementType
+  /** 各阶段 HP（多阶段 Boss，长度即阶段数；数值为第一章基准，随章节成长） */
   phaseHP: number[]
   /** 行动倒计时初始值（单阶段敌人使用；多阶段请优先用 phaseCountdown） */
   countdown: number
@@ -169,6 +185,16 @@ export interface EnemyConfig {
   phaseAttack?: number[]
   /** 各阶段行动倒计时，缺省回退到 countdown */
   phaseCountdown?: number[]
+  /**
+   * 各阶段护甲（V2）：每次「消除波」结算时减免的固定伤害（最低保留 1 点）。
+   * 护甲按波结算而非按颗，因此小消被惩罚、大消/技能/炸弹相对更值钱。
+   */
+  armor?: number[]
+  /**
+   * 阶段内狂怒（V2）：阶段血量降到 threshold 比例以下时，攻击力一次性提升 atkMult 倍。
+   * 给每个阶段内部再制造一个节奏拐点（仅触发一次，阶段推进后重置）。
+   */
+  enrage?: { threshold: number; atkMult: number }
   /**
    * 各阶段行动轮换（索引 = 阶段 - 1，越界回退到最后一组）。
    * 不配置则敌人每次行动只做普通攻击（普通小怪行为不变）。
@@ -191,6 +217,7 @@ export interface RelicConfig {
   desc: string
   /** 图标 ID */
   iconId: IconId
+  /** 流派：三选一时保证候选跨流派（V2），避免"三个都是垃圾/都是同类"的无效选择 */
   type: 'output' | 'control' | 'survival' | 'rule'
 }
 
@@ -210,6 +237,8 @@ export interface EnemyVariant {
   atkMult: number
   /** 初始行动倒计时偏移（负数 = 出手更快，压迫感更强） */
   countdownDelta?: number
+  /** 护甲加成（V2）：精英/巨化额外获得护甲，强化"数值墙/持久战"定位 */
+  armorAdd?: number
   /** 变体主题色（仅用于 UI 区分，不影响数值） */
   tint?: string
 }
@@ -274,6 +303,12 @@ export interface EnemyState {
   patternIndex: number
   /** 蓄力状态（null = 未蓄力） */
   charging: EnemyCharge | null
+  /** 各阶段护甲（已计入变体加成）；按消除波减免伤害 */
+  armor: number[]
+  /** 凝甲护盾：先于 HP 吸收伤害 */
+  shield: number
+  /** 本阶段是否已触发狂怒（阶段推进时重置） */
+  enraged: boolean
   frozen: number
   stunned: number
   burn: DotEffect | null

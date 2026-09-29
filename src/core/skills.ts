@@ -13,6 +13,7 @@
  */
 import { SKILL_LEVEL_MAX } from '@/config/constants'
 import { calcSkillDamage } from '@/core/battle'
+import type { ElementCounter } from '@/core/battle'
 import type { IconId } from '@/config/iconIds'
 import type { HeroConfig, SkillEffect } from '@/types'
 
@@ -20,10 +21,18 @@ import type { HeroConfig, SkillEffect } from '@/types'
 export interface SkillViewContext {
   /** 本局已持有遗物 ID */
   relics: string[]
-  /** 支援被动：火属性技能伤害 +15%（炎龙骑士作为支援时生效） */
+  /** 支援被动：火元素伤害 +10%（炎龙骑士作为支援时生效） */
   firePassive: boolean
+  /** 支援被动：冻结效果 +1 回合（冰霜女巫作为支援时生效） */
+  freezePassive?: boolean
   /** 当前是否处于低血（绝境反击生效条件） */
   lowHP: boolean
+  /** 当前敌人的元素克制信息（V2：让面板伤害与实战一致） */
+  counter?: ElementCounter
+  /** 当前敌人护甲（V2） */
+  armor?: number
+  /** 章节缩放（V2：技能表为基础值，实际伤害 ×(本章宝石攻击 ÷ 2)） */
+  chapterScale?: number
 }
 
 /** 单条技能的可展示视图 */
@@ -55,10 +64,13 @@ function collectUpgrades(
 ): string[] {
   const out: string[] = []
   if (hero.element === 'fire' && ctx.relics.includes('relic_heart_of_flame')) {
-    out.push('火焰之心：火属性技能伤害 +30%')
+    out.push('火焰之心：火元素伤害 +25%')
   }
-  if (skill.freeze && ctx.relics.includes('relic_ice_touch')) {
-    out.push('寒冰之触：冻结回合 +1')
+  if (skill.freeze && (ctx.relics.includes('relic_ice_touch') || ctx.freezePassive)) {
+    out.push('寒冰之触 / 冰霜女巫支援：冻结回合增加')
+  }
+  if (ctx.relics.includes('relic_arcane_echo')) {
+    out.push('奥术回响：技能伤害 +40%（宝石伤害 -15%）')
   }
   if (ctx.relics.includes('relic_desperate_counter')) {
     out.push('绝境反击：生命低于 30% 时伤害 +50%')
@@ -72,13 +84,13 @@ function collectUpgrades(
 /** 技能效果标签（让玩家不读长描述也能抓住技能定位）
  *  标签是**摘要**：完整数值与持续回合写在 skill.desc 里（详情浮层展示），
  *  这里必须短，否则技能卡一行放不下两个标签。 */
-function buildEffects(skill: SkillEffect, actualDamage: number): string[] {
+function buildEffects(skill: SkillEffect, actualDamage: number, freezeTurns: number): string[] {
   const out: string[] = []
   if (actualDamage > 0) out.push(`伤害 ${actualDamage}`)
   if (skill.heal) out.push(`回复 ${skill.heal}`)
   if (skill.shield) out.push(`护盾 ${skill.shield}`)
   if (skill.burn) out.push(`燃烧 ${skill.burn.damage}/回合`)
-  if (skill.freeze) out.push(`冻结 ${skill.freeze} 回合`)
+  if (freezeTurns > 0) out.push(`冻结 ${freezeTurns} 回合`)
   if (skill.clearDebuff) out.push('清除负面状态')
   return out
 }
@@ -94,8 +106,18 @@ export function buildSkillView(
   const actualDamage = calcSkillDamage(skill.damage, hero.element, {
     firePassive: ctx.firePassive,
     heartOfFlame: ctx.relics.includes('relic_heart_of_flame'),
-    desperate: ctx.lowHP && ctx.relics.includes('relic_desperate_counter')
+    desperate: ctx.lowHP && ctx.relics.includes('relic_desperate_counter'),
+    counter: ctx.counter,
+    armor: ctx.armor,
+    arcaneEcho: ctx.relics.includes('relic_arcane_echo'),
+    chapterScale: ctx.chapterScale
   })
+  // 冻结实际回合数：技能基础值 + 寒冰之触遗物 + 冰霜女巫支援被动
+  const freezeTurns = skill.freeze
+    ? skill.freeze +
+      (ctx.relics.includes('relic_ice_touch') ? 1 : 0) +
+      (ctx.freezePassive ? 1 : 0)
+    : 0
 
   return {
     which,
@@ -108,7 +130,7 @@ export function buildSkillView(
     level: Math.min(SKILL_LEVEL_MAX, 1 + upgrades.length),
     upgrades,
     damage: actualDamage,
-    effects: buildEffects(skill, actualDamage)
+    effects: buildEffects(skill, actualDamage, freezeTurns)
   }
 }
 

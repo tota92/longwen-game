@@ -260,8 +260,15 @@ export class GameBoard {
   // 消除执行
   // ------------------------------------------------------------------
 
-  /** 标记一次消除波的结果（由 battle 层消费后调用 commitClear 落盘） */
-  static expandBombTargets(grid: Grid, seeds: Pos[]): { clear: Pos[]; triggeredSpecials: Pos[] } {
+  /**
+   * 标记一次消除波的结果（由 battle 层消费后调用 commitClear 落盘）
+   * @param bombRadius 炸弹展开半径（默认 1 = 3×3；炸弹狂潮遗物传 2 = 5×5）
+   */
+  static expandBombTargets(
+    grid: Grid,
+    seeds: Pos[],
+    bombRadius = 1
+  ): { clear: Pos[]; triggeredSpecials: Pos[] } {
     const clearMap = new Map<string, Pos>()
     const triggered: Pos[] = []
     const queue: Pos[] = []
@@ -287,9 +294,9 @@ export class GameBoard {
       if (cell.special && !triggered.some((q) => q.row === p.row && q.col === p.col)) {
         triggered.push(p)
         if (cell.special === 'bomb') {
-          // 3×3 范围（REQ-BOARD-005）
-          for (let dr = -1; dr <= 1; dr++) {
-            for (let dc = -1; dc <= 1; dc++) {
+          // (2r+1)×(2r+1) 范围（REQ-BOARD-005：默认 3×3；炸弹狂潮遗物扩展为 5×5）
+          for (let dr = -bombRadius; dr <= bombRadius; dr++) {
+            for (let dc = -bombRadius; dc <= bombRadius; dc++) {
               const r = p.row + dr
               const c = p.col + dc
               if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
@@ -307,13 +314,19 @@ export class GameBoard {
    * 落盘一次消除：
    * @param seeds 清除种子格（自然消除=所有匹配格；主动触发=技能石所在格）
    * @param groups 产物放置信息（自然消除时的匹配组；主动触发传空数组）
+   * @param opts.bombRadius 炸弹展开半径（默认 1 = 3×3；炸弹狂潮遗物传 2）
    * @returns 被清除的格子与被触发的特殊石（供伤害/技能结算）
    */
   commitClear(
     seeds: Pos[],
-    groups: MatchGroup[] = []
+    groups: MatchGroup[] = [],
+    opts: { bombRadius?: number } = {}
   ): { cleared: { pos: Pos; element: Cell['element']; special: SpecialType | null }[]; specialsTriggered: { pos: Pos; element: Cell['element']; special: SpecialType }[] } {
-    const { clear, triggeredSpecials } = GameBoard.expandBombTargets(this.grid, seeds)
+    const { clear, triggeredSpecials } = GameBoard.expandBombTargets(
+      this.grid,
+      seeds,
+      opts.bombRadius ?? 1
+    )
 
     const cleared: { pos: Pos; element: Cell['element']; special: SpecialType | null }[] = []
     for (const p of clear) {

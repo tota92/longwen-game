@@ -21,7 +21,13 @@
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useGameStore } from '@/stores/game'
-import { ELEMENT_INFO, PLAYER_MAX_HP, TUTORIAL_MATCH_TARGET } from '@/config/constants'
+import {
+  ELEMENT_INFO,
+  ELEMENT_MULT,
+  PLAYER_MAX_HP,
+  TUTORIAL_MATCH_TARGET,
+  WEAK_MULT_HUNTER
+} from '@/config/constants'
 import { iconUrl } from '@/utils/icons'
 import { spriteUrl } from '@/utils/sprites'
 import type { FloatText, HeroConfig } from '@/types'
@@ -33,6 +39,26 @@ const leader = computed(() => store.leader)
 const heroElement = computed(() => ELEMENT_INFO[leader.value.element])
 const enemy = computed(() => battle.enemy)
 const isBoss = computed(() => !!enemy.value && enemy.value.phaseHP.length > 1)
+
+/** V2 敌人属性（元素 / 弱点 / 抗性 / 护甲），驱动场景顶部的属性徽记条 */
+const enemyAttrs = computed(() => store.enemyAttributes)
+
+/** 弱点倍率（弱点猎手遗物提升为 1.8） */
+const weakMult = computed(() =>
+  battle.relics.includes('relic_weak_hunter') ? WEAK_MULT_HUNTER : ELEMENT_MULT.weak
+)
+
+/** 点击属性徽记：把完整说明弹到提示区（徽记只放图标，说明走浮层） */
+function showAttrTip(): void {
+  const a = enemyAttrs.value
+  if (!a) return
+  const armor = a.armor > 0 ? ` · 护甲 ${a.armor}（每次消除减免）` : ''
+  store.showTip(
+    `${enemy.value?.display}：${ELEMENT_INFO[a.element].name}属性 · 弱点 ${ELEMENT_INFO[a.weak].name}` +
+      `（伤害 ×${weakMult.value}）· 抗性 ${ELEMENT_INFO[a.resist].name}（伤害 ×${ELEMENT_MULT.resist}）${armor}`,
+    5200
+  )
+}
 
 /** 状态徽记图标 */
 const ICON = {
@@ -56,6 +82,12 @@ const enemyPct = computed(() => {
   const e = enemy.value
   if (!e) return 0
   return Math.max(0, Math.min(100, (e.hp / e.phaseMaxHp) * 100))
+})
+/** 敌人护盾层（V2 凝甲）：按当前阶段血量上限折算宽度 */
+const enemyShieldPct = computed(() => {
+  const e = enemy.value
+  if (!e || e.shield <= 0) return 0
+  return Math.max(0, Math.min(100, (e.shield / e.phaseMaxHp) * 100))
 })
 
 /** 数值跳动：HP 变化的瞬间让数字弹一下，视线会被"数字动了"抓住 */
@@ -107,6 +139,10 @@ function intentText(): string {
         return `${action.name}（蓄力，${action.interrupt} 伤害可打断）`
       case 'drain':
         return `${action.name}（${action.damage} 伤害并回血）`
+      case 'corrupt':
+        return `${action.name}（${action.damage ?? e.attack} 伤害 + 污染 ${action.count} 颗宝石）`
+      case 'shield':
+        return `${action.name}（获得 ${action.amount} 点护盾）`
     }
   }
   switch (e.skill.type) {
@@ -320,6 +356,10 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
         <span class="p-bar">
           <i class="p-ghost" :style="{ width: `${enemyPct}%` }"></i>
           <i class="p-fill" :style="{ width: `${enemyPct}%` }"></i>
+          <!-- V2 凝甲：护盾层叠在血量之上（镜像从右往左） -->
+          <i v-if="enemyShieldPct > 0" class="p-shield" :style="{ width: `${enemyShieldPct}%` }">
+            <img :src="ICON.shield" alt="" aria-hidden="true" draggable="false" />
+          </i>
           <i class="p-ticks" aria-hidden="true"></i>
         </span>
         <span class="p-name font-title">{{ enemy.display }}</span>
@@ -509,6 +549,28 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
         </span>
       </div>
 
+      <!-- V2 敌人属性徽记条：弱点 / 抗性 / 护甲（点击看完整说明）
+           与 goal-chip 互斥（有敌人时不显示教学目标），不占 HUD 行高 -->
+      <div
+        v-if="enemy && enemyAttrs"
+        class="attr-strip"
+        role="button"
+        :aria-label="`敌人属性：弱点 ${ELEMENT_INFO[enemyAttrs.weak].name}，抗性 ${ELEMENT_INFO[enemyAttrs.resist].name}`"
+        @click="showAttrTip"
+      >
+        <span class="attr-chip weak" :style="{ '--el': ELEMENT_INFO[enemyAttrs.weak].color }">
+          <b>弱</b>
+          <img :src="iconUrl(ELEMENT_INFO[enemyAttrs.weak].iconId)" alt="" aria-hidden="true" draggable="false" />
+        </span>
+        <span class="attr-chip resist" :style="{ '--el': ELEMENT_INFO[enemyAttrs.resist].color }">
+          <b>抗</b>
+          <img :src="iconUrl(ELEMENT_INFO[enemyAttrs.resist].iconId)" alt="" aria-hidden="true" draggable="false" />
+        </span>
+        <span v-if="enemyAttrs.armor > 0" class="attr-chip armor num">
+          <b>甲</b>{{ enemyAttrs.armor }}
+        </span>
+      </div>
+
       <!-- 敌人行动预警：整场泛红 + 怪物侧红光（REQ-FEEL-005） -->
       <div v-if="warning" class="warn-fx" aria-hidden="true"></div>
       <!-- 生命告急：英雄侧红光呼吸 -->
@@ -669,6 +731,14 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   transition: width 0.28s ease;
 }
 .p-shield img { width: 9px; height: 9px; object-fit: contain; }
+/* 敌人护盾层镜像：与血条一致从右往左堆叠（V2 凝甲） */
+.plate-enemy .p-shield {
+  left: auto;
+  right: 0;
+  justify-content: flex-start;
+  padding-right: 0;
+  padding-left: 2px;
+}
 
 /* 血条高光与刻度 */
 .p-bar::before {
@@ -1309,6 +1379,45 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   scale: 1.15;
 }
 
+/* ---------- V2 敌人属性徽记条：弱点 / 抗性 / 护甲 ---------- */
+/* 放在场景顶部中央（与教学胶囊同位置、互斥显示），不占 HUD 行高，
+   点击弹出完整说明——徽记只承担"一眼看到弱点"，细节走提示区 */
+.attr-strip {
+  position: absolute;
+  left: 50%;
+  top: 5%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(10, 7, 18, 0.6);
+  border: 1px solid rgba(240, 216, 120, 0.32);
+  cursor: pointer;
+  z-index: 4;
+}
+.attr-strip:active { opacity: 0.8; }
+.attr-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 9px;
+  line-height: 1;
+  padding: 1px 4px 1px 3px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.42);
+  color: var(--el, #f5f0e6);
+  border: 1px solid color-mix(in srgb, var(--el, #888888) 55%, transparent);
+  white-space: nowrap;
+}
+.attr-chip b { font-weight: 700; font-size: 8.5px; opacity: 0.92; }
+.attr-chip img { width: 11px; height: 11px; object-fit: contain; }
+/* 弱点：元素色外发光，视线优先命中 */
+.attr-chip.weak { box-shadow: 0 0 8px color-mix(in srgb, var(--el) 45%, transparent); }
+.attr-chip.resist { opacity: 0.85; }
+.attr-chip.armor { color: var(--gold-light); border-color: var(--border-gold); font-weight: 700; }
+
 /* ---------- 场景级状态修饰 ---------- */
 /* 行动预警：整场泛红 + 怪物侧红光（REQ-FEEL-005） */
 .warn-fx {
@@ -1386,6 +1495,10 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   .timer-num { font-size: 14px; }
   .timer-label { font-size: 10px; }
   .goal-text { font-size: 14px; }
+  .attr-strip { gap: 5px; padding: 3px 9px; }
+  .attr-chip { font-size: 10px; padding: 2px 5px 2px 4px; }
+  .attr-chip b { font-size: 9.5px; }
+  .attr-chip img { width: 13px; height: 13px; }
   .dmg-damage { font-size: 21px; }
   .dmg-crit { font-size: 30px; }
   .dmg-skill { font-size: 27px; }
@@ -1415,5 +1528,9 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   .timer-num { font-size: 11px; }
   .meta-row { min-height: 13px; }
   .scene { border-radius: 8px; }
+  /* 属性徽记在矮屏进一步压缩，把高度让给棋盘 */
+  .attr-strip { gap: 3px; padding: 1px 6px; }
+  .attr-chip { font-size: 8.5px; }
+  .attr-chip img { width: 10px; height: 10px; }
 }
 </style>

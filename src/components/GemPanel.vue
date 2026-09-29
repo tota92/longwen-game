@@ -16,7 +16,7 @@
  */
 import { computed, ref } from 'vue'
 import { useGameStore } from '@/stores/game'
-import { ELEMENT_INFO, GEM_LEVEL_MAX, PLAYER_MAX_HP } from '@/config/constants'
+import { ELEMENT_INFO, ELEMENT_MULT, GEM_LEVEL_MAX, PLAYER_MAX_HP } from '@/config/constants'
 import { calcWaveDamage } from '@/core/battle'
 import { HEROES } from '@/config/heroes'
 import { iconUrl } from '@/utils/icons'
@@ -47,7 +47,8 @@ const boardCount = computed<Record<ElementType, number>>(() => {
 
 /**
  * 单颗宝石的实际伤害：直接复用战斗结算函数，保证展示值与真实结算一致。
- * 连击倍率固定为 1（这里表达的是"基础单颗价值"，不含连击放大）。
+ * 连击倍率固定为 1、不计护甲（护甲按"消除波"减免，摊到单颗会误导玩家），
+ * 但**计入元素克制**——这正是 V2 想让玩家读到的信息。
  */
 const singleDamage = computed(() => {
   const lv = battle.level
@@ -56,10 +57,35 @@ const singleDamage = computed(() => {
     gemPower: lv.gemPower,
     leaderElement: store.leader.element,
     sameBonusElement: store.sameBonusElement,
-    gemMasteryBonus: battle.relics.includes('relic_gem_mastery') ? 2 : 0,
+    counter: {
+      // 详情面板只表达"单颗价值"，弱点倍率按遗物状态取值，不显示护甲
+      weak: store.enemyAttributes?.weak ?? null,
+      resist: store.enemyAttributes?.resist ?? null,
+      weakMult: battle.relics.includes('relic_weak_hunter') ? 1.8 : ELEMENT_MULT.weak
+    },
+    armor: 0,
+    fireBonus:
+      (battle.relics.includes('relic_heart_of_flame') ? 0.25 : 0) +
+      (store.supports.some((h) => h.passiveId === 'fireSkillUp') ? 0.1 : 0),
+    arcanePenalty: false,
+    bigMatchBonus: false,
+    bombBonus: false,
     desperate: battle.relics.includes('relic_desperate_counter') && battle.playerHP < PLAYER_MAX_HP * 0.3
   })
 })
+
+/** 该元素对当前敌人的克制关系（V2）：弱点 / 抗性 / 无 */
+const counterText = computed(() => {
+  const el = detail.value?.element
+  const attrs = store.enemyAttributes
+  if (!el || !attrs) return null
+  if (el === attrs.weak) return { text: `弱点 ×${battle.relics.includes('relic_weak_hunter') ? 1.8 : ELEMENT_MULT.weak}`, kind: 'weak' as const }
+  if (el === attrs.resist) return { text: `抗性 ×${ELEMENT_MULT.resist}`, kind: 'resist' as const }
+  return { text: '无克制', kind: 'none' as const }
+})
+
+/** 当前敌人的弱点元素（供"聚焦弱点"快捷跳转） */
+const enemyWeak = computed(() => store.enemyAttributes?.weak ?? null)
 
 /** 该元素对应的英雄（火/水/木 各有一名主战英雄，光/暗/雷 暂无） */
 const relatedHero = computed(() => (detail.value ? HEROES.find((h) => h.element === detail.value!.element) ?? null : null))
@@ -84,6 +110,13 @@ function closeDetail(): void {
 /** 浮层内"标记棋盘 / 取消标记" */
 function toggleMark(): void {
   if (detail.value) store.toggleGemFocus(detail.value.element)
+}
+
+/** 一键聚焦当前敌人的弱点元素（V2 元素克制的快捷战术辅助） */
+function focusEnemyWeak(): void {
+  if (!enemyWeak.value) return
+  if (battle.focusElement !== enemyWeak.value) store.toggleGemFocus(enemyWeak.value)
+  closeDetail()
 }
 
 /** 长按/再次点击卡片直接切换高亮（不打开浮层），给熟练玩家一条快路径 */
@@ -161,6 +194,12 @@ function quickToggle(entry: GemEntry, e: MouseEvent): void {
               <span class="k">单颗伤害</span>
               <span class="v num">{{ singleDamage }} 点</span>
             </li>
+            <li v-if="counterText">
+              <span class="k">对本关敌人</span>
+              <span class="v" :class="{ counterWeak: counterText.kind === 'weak', counterResist: counterText.kind === 'resist' }">
+                {{ counterText.text }}
+              </span>
+            </li>
             <li>
               <span class="k">主战加成</span>
               <span class="v" :class="{ on: isLeaderElement }">
@@ -186,6 +225,10 @@ function quickToggle(entry: GemEntry, e: MouseEvent): void {
               @click="toggleMark"
             >
               {{ battle.focusElement === detail.element ? '取消标记' : '标记棋盘' }}
+            </button>
+            <!-- V2：一键聚焦敌人弱点元素（元素克制的快捷战术辅助） -->
+            <button v-if="enemyWeak" class="btn detail-btn" @click="focusEnemyWeak">
+              聚焦弱点（{{ ELEMENT_INFO[enemyWeak].name }}）
             </button>
           </div>
         </div>
@@ -398,6 +441,9 @@ function quickToggle(entry: GemEntry, e: MouseEvent): void {
 .detail-stats .k { color: var(--text-3); }
 .detail-stats .v { color: var(--text-1); font-weight: 600; }
 .detail-stats .v.on { color: #7ff0a8; }
+/* V2：元素克制关系着色（弱点暖色 / 抗性冷色） */
+.detail-stats .v.counterWeak { color: #ffb061; }
+.detail-stats .v.counterResist { color: #8fb6d9; }
 
 .detail-hero {
   display: flex;
@@ -434,7 +480,12 @@ function quickToggle(entry: GemEntry, e: MouseEvent): void {
   text-align: center;
 }
 
-.detail-actions { margin-top: var(--sp-3); }
+.detail-actions {
+  margin-top: var(--sp-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
 .detail-btn {
   width: 100%;
   padding: var(--sp-3);

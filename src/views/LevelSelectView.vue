@@ -6,7 +6,8 @@ import { computed } from 'vue'
 import { useGameStore } from '@/stores/game'
 import { LEVELS, CHAPTER_NAMES } from '@/config/levels'
 import { getEnemy } from '@/config/enemies'
-import type { WaveEnemy } from '@/types'
+import { ELEMENT_INFO } from '@/config/constants'
+import type { ElementType, WaveEnemy } from '@/types'
 import { iconUrl } from '@/utils/icons'
 
 const store = useGameStore()
@@ -48,6 +49,19 @@ function waveNames(waves: WaveEnemy[]): string {
       waves.map((w) => (w.variant ? `${w.variant.namePrefix}·` : '') + getEnemy(w.enemyId).name)
     )
   ].join(' / ')
+}
+
+/**
+ * 关卡预览：本关敌人的弱点元素集合（V2）。
+ * 元素克制是进关前最重要的决策信息——看到"弱水"就换冰霜女巫主战，
+ * 因此把它放到关卡节点上，而不是等进关后才发现。
+ */
+function weakElements(waves: WaveEnemy[]): ElementType[] {
+  return [...new Set(waves.map((w) => getEnemy(w.enemyId).weak))]
+}
+
+function elementName(el: ElementType): string {
+  return ELEMENT_INFO[el].name
 }
 
 /** 本章已通关数 */
@@ -96,6 +110,18 @@ function clearedInChapter(levels: typeof LEVELS): number {
             </span>
             <span v-else-if="levelState(lv.id) === 'current'" class="node-current">▶ 当前</span>
             <span v-else class="node-enemy">{{ waveNames(lv.waves) || '教学' }}</span>
+            <!-- V2：本关敌人弱点（进关前编队决策依据） -->
+            <span v-if="lv.waves.length" class="node-weak">
+              <b>弱点</b>
+              <img
+                v-for="el in weakElements(lv.waves)"
+                :key="el"
+                class="nw-icon"
+                :src="iconUrl(ELEMENT_INFO[el].iconId)"
+                :alt="elementName(el)"
+                draggable="false"
+              />
+            </span>
           </button>
         </div>
       </section>
@@ -246,6 +272,29 @@ function clearedInChapter(levels: typeof LEVELS): number {
 @keyframes current-blink {
   0%, 100% { opacity: 0.5; }
   50% { opacity: 1; }
+}
+
+/* V2：弱点元素条（元素克制是进关前最重要的决策信息） */
+.node-weak {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-top: 1px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(255, 176, 97, 0.32);
+}
+.node-weak b {
+  font-size: 8.5px;
+  font-weight: 700;
+  color: rgba(255, 176, 97, 0.9);
+}
+.nw-icon {
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 3px rgba(255, 176, 97, 0.55));
 }
 
 .state-locked {

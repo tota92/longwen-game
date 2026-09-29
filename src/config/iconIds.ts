@@ -1,7 +1,7 @@
 /**
  * 图标 ID 清单（自动生成，请勿手动修改）
  * 生成脚本：scripts/icons/build.ts（图标源：scripts/icons/catalog/*）
- * 共 58 枚 256×256 透明 PNG，按用途归档于 public/icons/<分组>/ 子目录
+ * 共 62 枚 256×256 透明 PNG，按用途归档于 public/icons/<分组>/ 子目录
  */
 
 /** 元素宝石 */
@@ -49,6 +49,10 @@ export const RELIC_ICON_IDS = [
   'relic_element_resonance',
   'relic_desperate_counter',
   'relic_gem_mastery',
+  'relic_weak_hunter',
+  'relic_arcane_echo',
+  'relic_bomb_frenzy',
+  'relic_iron_wall',
 ] as const
 
 /** 敌人 */
@@ -131,6 +135,10 @@ export type IconId =
   | 'relic_element_resonance'
   | 'relic_desperate_counter'
   | 'relic_gem_mastery'
+  | 'relic_weak_hunter'
+  | 'relic_arcane_echo'
+  | 'relic_bomb_frenzy'
+  | 'relic_iron_wall'
   | 'enemy_slime'
   | 'enemy_fire_lizard'
   | 'enemy_frost_ghost'
@@ -192,6 +200,10 @@ export const ALL_ICON_IDS: IconId[] = [
   'relic_element_resonance',
   'relic_desperate_counter',
   'relic_gem_mastery',
+  'relic_weak_hunter',
+  'relic_arcane_echo',
+  'relic_bomb_frenzy',
+  'relic_iron_wall',
   'enemy_slime',
   'enemy_fire_lizard',
   'enemy_frost_ghost',

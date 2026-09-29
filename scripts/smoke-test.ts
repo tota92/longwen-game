@@ -3,17 +3,20 @@
  * 运行：npx tsx scripts/smoke-test.ts
  */
 import { GameBoard } from '../src/core/board'
-import { BOARD_SIZE, ELEMENTS } from '../src/config/constants'
+import { BOARD_SIZE, ELEMENTS, ELEMENT_COUNTER, counterOf, ELEMENT_MULT, WEAK_MULT_HUNTER, chapterHpMult, chapterAtkMult, skillChapterScale } from '../src/config/constants'
 import {
   advanceEnemyPhase,
   calcWaveDamage,
   calcComboMult,
   calcSkillDamage,
   createEnemyState,
-  enemyDead
+  elementCounterOf,
+  enemyDead,
+  tryEnrage
 } from '../src/core/battle'
-import { ENEMIES, ENEMY_VARIANTS } from '../src/config/enemies'
+import { ENEMIES, ENEMY_VARIANTS, getEnemy } from '../src/config/enemies'
 import { LEVELS } from '../src/config/levels'
+import { RELICS } from '../src/config/relics'
 import type { ElementType, Grid, MatchGroup, Pos } from '../src/types'
 
 let passed = 0
@@ -26,6 +29,23 @@ function assert(cond: boolean, name: string): void {
   } else {
     failed++
     console.error(`  ✗ ${name}`)
+  }
+}
+
+/** V2 伤害上下文（默认无克制、无护甲、无遗物增益，测试按需覆盖） */
+function dmgCtx(over: Partial<Parameters<typeof calcWaveDamage>[2]> = {}): Parameters<typeof calcWaveDamage>[2] {
+  return {
+    gemPower: 2,
+    leaderElement: 'fire',
+    sameBonusElement: null,
+    counter: { weak: null, resist: null, weakMult: ELEMENT_MULT.weak },
+    armor: 0,
+    fireBonus: 0,
+    arcanePenalty: false,
+    bigMatchBonus: false,
+    bombBonus: false,
+    desperate: false,
+    ...over
   }
 }
 
@@ -140,43 +160,88 @@ console.log('\n[4] 重力下落与冻结阻挡（REQ-ENEMY-101 悬空固定）')
 }
 
 // ------------------------------------------------------------------
-console.log('\n[5] 数值公式（REQ-DAMAGE 锚点验算）')
+console.log('\n[5] 数值公式（REQ-DAMAGE 锚点验算 + V2 元素克制/护甲/遗物乘区）')
 // ------------------------------------------------------------------
 {
   assert(calcComboMult(1) === 1.0 && calcComboMult(2) === 1.2 && calcComboMult(3) === 1.5, '连击倍率 1/2/3 连')
   assert(calcComboMult(4) === 2.0 && calcComboMult(5) === 2.5 && calcComboMult(6) === 3.0 && calcComboMult(9) === 3.0, '连击倍率 4/5/6+ 连（封顶 3.0）')
 
   // 第一章攻击 2，3 颗火宝石，主战火（+20%），1 连
-  const dmg = calcWaveDamage(
-    [{ element: 'fire' }, { element: 'fire' }, { element: 'fire' }],
-    1,
-    { gemPower: 2, leaderElement: 'fire', sameBonusElement: null, gemMasteryBonus: 0, desperate: false }
-  )
+  const dmg = calcWaveDamage([{ element: 'fire' }, { element: 'fire' }, { element: 'fire' }], 1, dmgCtx())
   assert(dmg === 7, `火3消+主战火加成 = floor(3×2×1.2) = 7（实际 ${dmg}）`)
 
   // 无加成对照
-  const dmgPlain = calcWaveDamage(
-    [{ element: 'water' }, { element: 'water' }, { element: 'water' }],
-    1,
-    { gemPower: 2, leaderElement: 'fire', sameBonusElement: null, gemMasteryBonus: 0, desperate: false }
-  )
+  const dmgPlain = calcWaveDamage([{ element: 'water' }, { element: 'water' }, { element: 'water' }], 1, dmgCtx())
   assert(dmgPlain === 6, `水3消无加成 = 6（实际 ${dmgPlain}）`)
 
   // 2 连倍率：3 颗×2攻×1.2连击 = 7.2 → 7
-  const dmg2 = calcWaveDamage(
-    [{ element: 'water' }, { element: 'water' }, { element: 'water' }],
-    2,
-    { gemPower: 2, leaderElement: 'fire', sameBonusElement: null, gemMasteryBonus: 0, desperate: false }
-  )
+  const dmg2 = calcWaveDamage([{ element: 'water' }, { element: 'water' }, { element: 'water' }], 2, dmgCtx())
   assert(dmg2 === 7, `2 连击 3 消 = floor(6×1.2) = 7（实际 ${dmg2}）`)
 
-  // 技能伤害：炎龙 15 × (1+15%支援+30%火焰之心)
-  const skillDmg = calcSkillDamage(15, 'fire', { firePassive: true, heartOfFlame: true })
-  assert(skillDmg === 21, `火焰斩+双重加成 = floor(15×1.45) = 21（实际 ${skillDmg}）`)
+  /* ---------- V2：元素克制 ---------- */
+  const waterWeakCtx = dmgCtx({ counter: { weak: 'water', resist: 'wood', weakMult: ELEMENT_MULT.weak } })
+  const weakDmg = calcWaveDamage([{ element: 'water' }, { element: 'water' }, { element: 'water' }], 1, waterWeakCtx)
+  assert(weakDmg === 9, `命中弱点 = floor(3×2×1.5) = 9（实际 ${weakDmg}）`)
 
-  // 冰霜女巫被动：敌人倒计时 +1
-  const enemy = createEnemyState({ enemyId: 'enemy_slime' }, { enemyCdUp: true })
-  assert(enemy.countdown === 4 && enemy.baseCountdown === 4, '冰霜女巫支援被动：初始倒计时 3→4')
+  const resistDmg = calcWaveDamage([{ element: 'wood' }, { element: 'wood' }, { element: 'wood' }], 1, waterWeakCtx)
+  assert(resistDmg === 3, `撞上抗性 = floor(3×2×0.5) = 3（实际 ${resistDmg}）`)
+
+  // 主战加成 × 克制乘算：火3消打火弱点怪（主战火 +20%、弱点 ×1.5）
+  const stackDmg = calcWaveDamage(
+    [{ element: 'fire' }, { element: 'fire' }, { element: 'fire' }],
+    1,
+    dmgCtx({ counter: { weak: 'fire', resist: null, weakMult: ELEMENT_MULT.weak } })
+  )
+  assert(stackDmg === 10, `主战加成×克制乘算 = floor(3×2×1.2×1.5) = 10（实际 ${stackDmg}）`)
+
+  // 弱点猎手：弱点倍率 1.5 → 1.8
+  const hunterDmg = calcWaveDamage(
+    [{ element: 'water' }, { element: 'water' }, { element: 'water' }],
+    1,
+    dmgCtx({ counter: { weak: 'water', resist: null, weakMult: WEAK_MULT_HUNTER } })
+  )
+  assert(hunterDmg === 10, `弱点猎手 = floor(3×2×1.8) = 10（实际 ${hunterDmg}）`)
+
+  /* ---------- V2：护甲（按消除波减免，下限 1） ---------- */
+  const armorDmg = calcWaveDamage([{ element: 'water' }, { element: 'water' }, { element: 'water' }], 1, dmgCtx({ armor: 2 }))
+  assert(armorDmg === 4, `护甲 2 减免 = 6-2 = 4（实际 ${armorDmg}）`)
+  const armorFloor = calcWaveDamage(
+    [{ element: 'wood' }, { element: 'wood' }, { element: 'wood' }],
+    1,
+    dmgCtx({ counter: { weak: 'water', resist: 'wood', weakMult: ELEMENT_MULT.weak }, armor: 5 })
+  )
+  assert(armorFloor === 1, `护甲不破防时保底 1 点（实际 ${armorFloor}）`)
+
+  /* ---------- V2：遗物乘区 ---------- */
+  const masteryDmg = calcWaveDamage([{ element: 'water' }, { element: 'water' }, { element: 'water' }], 1, dmgCtx({ bigMatchBonus: true }))
+  assert(masteryDmg === 8, `宝石精通（4连+40%）= floor(6×1.4) = 8（实际 ${masteryDmg}）`)
+  const arcaneWave = calcWaveDamage([{ element: 'water' }, { element: 'water' }, { element: 'water' }], 1, dmgCtx({ arcanePenalty: true }))
+  assert(arcaneWave === 5, `奥术回响代价（宝石 -15%）= floor(6×0.85) = 5（实际 ${arcaneWave}）`)
+  const bombWave = calcWaveDamage([{ element: 'water' }, { element: 'water' }, { element: 'water' }], 1, dmgCtx({ bombBonus: true }))
+  assert(bombWave === 7, `炸弹狂潮（炸弹波 +20%）= floor(6×1.2) = 7（实际 ${bombWave}）`)
+  const flameGem = calcWaveDamage([{ element: 'fire' }, { element: 'fire' }, { element: 'fire' }], 1, dmgCtx({ fireBonus: 0.25 }))
+  assert(flameGem === 9, `火焰之心（火元素 +25%）= floor(3×2×1.2×1.25) = 9（实际 ${flameGem}）`)
+
+  /* ---------- V2：技能伤害（章节缩放 / 克制 / 护甲 / 遗物） ---------- */
+  const skillDmg = calcSkillDamage(24, 'fire', { firePassive: true, heartOfFlame: true })
+  assert(skillDmg === 33, `火焰斩满配 = floor(24×1.1×1.25) = 33（实际 ${skillDmg}）`)
+  const skillWeak = calcSkillDamage(18, 'water', { counter: { weak: 'water', resist: null, weakMult: ELEMENT_MULT.weak } })
+  assert(skillWeak === 27, `技能命中弱点 = floor(18×1.5) = 27（实际 ${skillWeak}）`)
+  const skillArmor = calcSkillDamage(24, 'fire', { chapterScale: 1.5, armor: 2 })
+  assert(skillArmor === 34, `技能章节缩放+护甲 = 24×1.5-2 = 34（实际 ${skillArmor}）`)
+  const skillEcho = calcSkillDamage(24, 'water', { arcaneEcho: true })
+  assert(skillEcho === 33, `奥术回响（技能 +40%）= floor(24×1.4) = 33（实际 ${skillEcho}）`)
+
+  /* ---------- V2：敌人状态构造（护甲 / 护盾 / 章节成长） ---------- */
+  const slime = createEnemyState({ enemyId: 'enemy_slime' })
+  assert(slime.hp === 68 && slime.attack === 17, '史莱姆基准：68 血 / 攻击 17（V2.2 硬核档）')
+  assert(slime.armor[0] === 0 && slime.shield === 0 && !slime.enraged, '敌人初始：护甲 0 / 护盾 0 / 未狂怒')
+  const slimeCh2 = createEnemyState(
+    { enemyId: 'enemy_slime' },
+    { hpMult: chapterHpMult(3), atkMult: chapterAtkMult(2) }
+  )
+  assert(slimeCh2.hp === 102 && slimeCh2.attack === 21, `第二章史莱姆：HP ×1.5 / 攻击 ×1.25（实际 ${slimeCh2.hp}/${slimeCh2.attack}）`)
+  assert(skillChapterScale(3) === 1.5, '技能章节缩放：第二章 ×1.5')
 }
 
 // ------------------------------------------------------------------
@@ -269,14 +334,14 @@ console.log('\n[10] Boss 阶段转换（REQ-ENEMY-003 回归）')
 // ------------------------------------------------------------------
 {
   const dragon = createEnemyState({ enemyId: 'enemy_ancient_dragon' })
-  assert(dragon.phaseHP.length === 2 && dragon.phaseMaxHp === 120, '远古巨龙：一阶段 120 血')
+  assert(dragon.phaseHP.length === 2 && dragon.phaseMaxHp === 118, '远古巨龙：一阶段 118 血')
 
   dragon.hp = 0
   const advanced = advanceEnemyPhase(dragon)
   assert(advanced && dragon.phase === 2, '血量耗尽后推进到第二阶段')
-  assert(dragon.hp === 100, '二阶段血量重置为 100')
-  // 回归点：阶段上限必须同步，否则血条按 120 计算永远显示不满
-  assert(dragon.phaseMaxHp === 100, '二阶段血量上限同步为 100（血条显示正确）')
+  assert(dragon.hp === 96, '二阶段血量重置为 96')
+  // 回归点：阶段上限必须同步，否则血条按 118 计算永远显示不满
+  assert(dragon.phaseMaxHp === 96, '二阶段血量上限同步为 96（血条显示正确）')
   assert(dragon.countdown === dragon.baseCountdown + 1, '阶段转换重置倒计时（补偿本回合递减）')
   assert(!enemyDead(dragon), '二阶段敌人不应判定为死亡')
 
@@ -286,36 +351,44 @@ console.log('\n[10] Boss 阶段转换（REQ-ENEMY-003 回归）')
 }
 
 // ------------------------------------------------------------------
-console.log('\n[11] Boss 行动轮换与蓄力机制（5.4 回归）')
+console.log('\n[11] Boss 行动轮换与蓄力机制（5.4 回归 + V2 狂怒）')
 // ------------------------------------------------------------------
 {
   const dragon = createEnemyState({ enemyId: 'enemy_ancient_dragon' })
   assert(dragon.pattern.length === 3, '远古巨龙一阶段行动轮换含 3 招')
   assert(dragon.pattern[0].kind === 'charge', '蓄力大招排在轮换首位（保证每阶段必触发）')
-  assert(dragon.attack === 14 && dragon.phaseAttack[1] === 17, '阶段攻击力表 14 → 17')
+  assert(dragon.attack === 16 && dragon.phaseAttack[1] === 20, '阶段攻击力表 16 → 20（V2.2 硬核档）')
+  assert(dragon.armor[0] === 1, '远古巨龙护甲 1（V2：小消被轻微惩罚）')
   assert(dragon.patternIndex === 0 && dragon.charging === null, '初始轮换游标为 0 且未蓄力')
   const firstCharge = dragon.pattern[0]
   assert(
-    firstCharge.kind === 'charge' && firstCharge.window === 3 && firstCharge.interrupt > 0,
-    '蓄力招式带独立打断窗口（window=3）与打断阈值'
+    firstCharge.kind === 'charge' && firstCharge.window === 3 && firstCharge.interrupt === 30,
+    '蓄力招式：窗口 3 回合 / 打断阈值 30'
   )
 
-  // 阶段推进：切换轮换、攻击力、倒计时，并清除蓄力
+  // V2 阶段内狂怒：血量过半触发一次，攻击力提升 20%
+  dragon.hp = Math.floor(dragon.phaseMaxHp * 0.5)
+  assert(tryEnrage(dragon), '血量降至 50% 触发阶段内狂怒')
+  assert(dragon.attack === Math.floor(16 * 1.2), `狂怒后攻击 16→${dragon.attack}`)
+  assert(!tryEnrage(dragon), '狂怒只触发一次')
+
+  // 阶段推进：切换轮换、攻击力、倒计时，清除蓄力并重置狂怒标记
   dragon.charging = {
     name: '龙焰蓄能',
     release: '灭世龙焰',
-    damage: 30,
-    interrupt: 38,
-    recoil: 14,
+    damage: 32,
+    interrupt: 30,
+    recoil: 15,
     taken: 0
   }
   dragon.hp = 0
   advanceEnemyPhase(dragon)
-  assert(dragon.attack === 17, '二阶段攻击力提升到 17（狂怒）')
+  assert(dragon.attack === 20, '二阶段攻击力提升到 20（狂怒）')
   assert(dragon.baseCountdown === 2, '二阶段倒计时缩短为 2（狂怒加速）')
   assert(dragon.pattern.some((a) => a.kind === 'burn'), '二阶段轮换加入灼烧招式')
   assert(dragon.patternIndex === 0, '阶段转换重置轮换游标')
   assert(dragon.charging === null, '阶段转换清除进行中的蓄力')
+  assert(!dragon.enraged, '阶段转换重置狂怒标记')
 
   // 轮换回退：只配置一套轮换的敌人（幼龙），二阶段沿用同一套
   const whelp = createEnemyState({ enemyId: 'enemy_dragon_whelp' })
@@ -331,13 +404,21 @@ console.log('\n[11] Boss 行动轮换与蓄力机制（5.4 回归）')
   const slime = createEnemyState({ enemyId: 'enemy_slime' })
   assert(slime.pattern.length === 0, '史莱姆未配置轮换，退化为普通攻击')
 
+  // V2 污染行动：火蜥蜴通过轮换携带 corrupt（伤害 + 宝石转色）
+  const lizard = createEnemyState({ enemyId: 'enemy_fire_lizard' })
+  assert(
+    lizard.pattern.length === 1 && lizard.pattern[0].kind === 'corrupt',
+    '火蜥蜴行动轮换 = 污染（转 3 颗宝石为火，并造成伤害）'
+  )
+
   // 变体倍率同时作用于各阶段攻击力与 HP
   const eliteDragon = createEnemyState({
     enemyId: 'enemy_ancient_dragon',
     variant: { ...ENEMY_VARIANTS.elite }
   })
-  assert(eliteDragon.attack === Math.floor(14 * 1.4), '精英变体作用于阶段攻击力')
-  assert(eliteDragon.phaseMaxHp === Math.floor(120 * 1.8), '精英变体作用于阶段 HP')
+  assert(eliteDragon.attack === Math.floor(16 * 1.3), '精英变体作用于阶段攻击力（V2.2：×1.3）')
+  assert(eliteDragon.phaseMaxHp === Math.floor(118 * 1.7), '精英变体作用于阶段 HP（V2.2：×1.7）')
+  assert(eliteDragon.armor[0] === 2, '精英变体额外 +1 护甲（V2）')
   assert(eliteDragon.display === '精英·远古巨龙', '变体前缀写入显示名')
   assert(eliteDragon.tint === ENEMY_VARIANTS.elite.tint, '变体主题色写入状态（UI 区分用）')
 }
@@ -352,21 +433,45 @@ console.log('\n[12] 敌人变体（关卡差异化的基础）')
   const swift = createEnemyState({ enemyId: 'enemy_slime', variant: { ...ENEMY_VARIANTS.swift } })
 
   assert(berserk.attack > base.attack * 1.5 && berserk.phaseMaxHp < giant.phaseMaxHp, '狂暴：攻击高、血量不厚（速杀定位）')
-  assert(giant.phaseMaxHp === Math.floor(30 * 2.6) && giant.attack === base.attack, '巨化：血量 2.6 倍、攻击不变（持久定位）')
+  assert(giant.phaseMaxHp === Math.floor(68 * 2.2) && giant.attack === base.attack, '巨化：血量 2.2 倍、攻击不变（持久定位，V2.2）')
+  assert(giant.armor[0] === 1, '巨化额外 +1 护甲（V2：惩罚小消，逼大消）')
   assert(swift.countdown === base.countdown - 1, '迅捷：初始倒计时 -1（出手更快）')
   assert(base.tint === null && base.display === '史莱姆', '普通敌人无变体前缀与主题色')
 
-  // 倒计时偏移与冰霜女巫支援被动（+1）叠加，且不会低于 1
-  const swiftWithCdUp = createEnemyState(
-    { enemyId: 'enemy_slime', variant: { ...ENEMY_VARIANTS.swift } },
-    { enemyCdUp: true }
-  )
-  assert(swiftWithCdUp.countdown === base.countdown, '迅捷(-1) 与冰霜女巫被动(+1) 相互抵消')
   const swiftLizard = createEnemyState({
     enemyId: 'enemy_fire_lizard',
     variant: { ...ENEMY_VARIANTS.swift }
   })
   assert(swiftLizard.countdown === 1, '迅捷火蜥蜴倒计时 2→1，且被下限保护为 1')
+}
+
+// ------------------------------------------------------------------
+console.log('\n[12b] 元素克制配置自洽（V2 唯一事实来源校验）')
+// ------------------------------------------------------------------
+{
+  // 1) 每个敌人的弱点必须是「克制自身的元素」
+  const weakOk = ENEMIES.every((e) => e.weak === counterOf(e.element))
+  assert(weakOk, `所有敌人弱点符合克制轮（异常：${ENEMIES.filter((e) => e.weak !== counterOf(e.element)).map((e) => e.name).join('/') || '无'}）`)
+
+  // 2) 抗性取自「自身克制的元素」或自身元素（光/暗互克特例）
+  const resistOk = ENEMIES.every((e) => e.resist === ELEMENT_COUNTER[e.element] || e.resist === e.element)
+  assert(resistOk, '所有敌人抗性取自自身克制目标（或光/暗自抗）')
+
+  // 3) 弱点与抗性不得相同
+  assert(ENEMIES.every((e) => e.weak !== e.resist), '弱点与抗性互不相同')
+
+  // 4) 攻击/HP 下限保护：任何敌人不应出现 0 攻或 0 血
+  assert(ENEMIES.every((e) => e.attack > 0 && e.phaseHP.every((hp) => hp > 0)), '敌人攻击力与 HP 均为正值')
+
+  // 5) 护甲不得超过第一章基础伤害的 1/3（防止普通玩家完全打不动）
+  const armorOk = ENEMIES.every((e) => (e.armor ?? [0]).every((a) => a <= 2))
+  assert(armorOk, '护甲上限 2（不超过第一章 3 消伤害的 1/3）')
+
+  // 6) 遗物池：ID 唯一 + 流派覆盖 4 类（保证三选一跨流派规则始终有解）
+  const relicIds = RELICS.map((r) => r.id)
+  assert(new Set(relicIds).size === relicIds.length, '遗物 ID 无重复')
+  const relicTypes = new Set(RELICS.map((r) => r.type))
+  assert(relicTypes.size === 4, `遗物覆盖 4 个流派（实际 ${[...relicTypes].join('/')}）`)
 }
 
 // ------------------------------------------------------------------

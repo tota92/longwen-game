@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
     "test": "tsx scripts/smoke-test.ts",
+    "balance": "tsx scripts/balance-audit.ts",
     "check:build": "node scripts/preview-build.mjs --test",
     "check:visual": "node scripts/visual-check.mjs",
     "check:battle": "node scripts/battle-demo.mjs",
