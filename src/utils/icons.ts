@@ -4,7 +4,8 @@
  * 图标为 256×256 透明 PNG，按用途归类于 public/icons/<分组>/ 子目录
  * （elements/overlays/heroes/skills/relics/enemies/status/nodes/ui/results，
  * 由 scripts/icons/build.ts 生成）。
- * 使用 BASE_URL 前缀，兼容子目录部署与 file:// 场景。
+ * 路径经 src/utils/assetUrl.ts 统一解析：常规构建回退 BASE_URL 前缀（兼容子目录部署与 file:// 场景），
+ * 单文件构建（npm run build-mobile）命中内联 Data URI 表，图标随 HTML 一起分发。
  * ID 类型由 src/config/iconIds.ts 自动生成，保证引用不漂移。
  */
 import {
@@ -22,9 +23,7 @@ import {
   RESULT_ICON_IDS,
   type IconId
 } from '@/config/iconIds'
-
-/** 图标根目录（相对应用基路径） */
-const ICON_BASE = `${import.meta.env.BASE_URL}icons/`
+import { assetUrl } from './assetUrl'
 
 /**
  * 分组 → 子目录映射：ID 按用途归类到 icons/ 下的对应文件夹
@@ -59,7 +58,7 @@ const urlCache = new Map<IconId, string>()
 export function iconUrl(id: IconId): string {
   let url = urlCache.get(id)
   if (!url) {
-    url = `${ICON_BASE}${ICON_DIR.get(id)}/${id}.png`
+    url = assetUrl(`icons/${ICON_DIR.get(id)}/${id}.png`)
     urlCache.set(id, url)
   }
   return url

@@ -7,12 +7,11 @@
  *   - icons/   → 列表、按钮、棋盘宝石等小尺寸场景
  *   - sprites/ → 战斗展示区的大尺寸角色形象
  *
- * ID 类型由 src/config/spriteIds.ts 提供，保证引用不漂移。
+ * ID 类型由 src/config/spriteIds.ts 提供，保证引用不漂移；路径经 src/utils/assetUrl.ts
+ * 统一解析：常规构建回退 BASE_URL，单文件构建（npm run build-mobile）命中内联 Data URI 表。
  */
 import { ALL_SPRITE_IDS, HERO_SPRITE_IDS, ENEMY_SPRITE_IDS, type SpriteId } from '@/config/spriteIds'
-
-/** 立绘根目录（相对应用基路径，兼容子目录部署与 file:// 场景） */
-const SPRITE_BASE = `${import.meta.env.BASE_URL}sprites/`
+import { assetUrl } from './assetUrl'
 
 /** 阵营 → 子目录映射（与 public/sprites/ 的归类目录一致） */
 const GROUP_DIRS: ReadonlyArray<readonly [readonly SpriteId[], string]> = [
@@ -35,7 +34,7 @@ const urlCache = new Map<SpriteId, string>()
 export function spriteUrl(id: SpriteId): string {
   let url = urlCache.get(id)
   if (!url) {
-    url = `${SPRITE_BASE}${SPRITE_DIR.get(id)}/${id}.png`
+    url = assetUrl(`sprites/${SPRITE_DIR.get(id)}/${id}.png`)
     urlCache.set(id, url)
   }
   return url

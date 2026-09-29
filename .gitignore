@@ -43,3 +43,6 @@ package-lock.json
 
 # 本地预览产物（scripts/preview-build.mjs 生成，供截图验收用）
 .preview/
+
+# 单文件移动端产物（npm run build-mobile 生成，供直接分发到手机）
+release/
