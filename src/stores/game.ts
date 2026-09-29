@@ -30,15 +30,21 @@ import {
   chapterAtkMult,
   chapterHpMult,
   DDA_FAIL_TIMES,
+  DRAGON_EVENT_CHANCE,
   ELEMENT_INFO,
+  ELEMENTS,
+  GEM_CRIT_CHANCE,
+  GEM_CRIT_MULT,
   GEM_FROZEN_TURNS,
   MAX_RELICS,
   PASSIVE_HEAL_PER_TURN,
   PLAYER_MAX_HP,
   RELIC_CHOICES,
   skillChapterScale,
+  SWAP_HP_COST,
   TUTORIAL_MATCH_TARGET
 } from '@/config/constants'
+import { applyDragonEventToBoard, rollDragonEvent } from '@/core/events'
 import { getLevel } from '@/config/levels'
 import { getEnemy } from '@/config/enemies'
 import { getRelic, RELICS } from '@/config/relics'
@@ -572,6 +578,10 @@ export const useGameStore = defineStore('game', () => {
     }
     relicOffers.value = []
     battle.canInteract = true
+    if (level.tutorial !== 'match') {
+      // V3 机制公示：操作烧血与回合末随机事件是本作核心张力，开局一次性讲清
+      showTip(`龙脉法则：每次操作棋盘汲取 ${SWAP_HP_COST} 点生命，回合末可能触发龙脉异象`, ANIM.tip + 1600)
+    }
     screen.value = 'battle'
     saveSnapshot()
   }
@@ -964,6 +974,12 @@ export const useGameStore = defineStore('game', () => {
    */
   async function resolveTurn(initial?: { seeds: Pos[] }): Promise<void> {
     const board = battle.board!
+    // 龙脉代价（V3）：每次有效棋盘操作汲取生命（无视护盾；教学关免收）。
+    // 无效交换在 doSwap 里已回弹返回，不会走到这里——扣血惩罚的是回合消耗而非误触。
+    if (battle.level?.tutorial !== 'match') {
+      battle.playerHP = Math.max(0, battle.playerHP - SWAP_HP_COST)
+      addFloat(`-${SWAP_HP_COST} (龙脉汲取)`, 'damage', 'hero')
+    }
     battle.combo = 0
     // 炸弹狂潮遗物：炸弹展开半径 3×3 → 5×5（V2）
     const bombRadius = hasRelic('relic_bomb_frenzy') ? 2 : 1
@@ -1000,7 +1016,7 @@ export const useGameStore = defineStore('game', () => {
       if (gems.length > 0) {
         // 宝石展示区：累计本局各元素消除量（熟练度等级的数据源）
         for (const g of gems) battle.gemStats[g.element]++
-        const dmg = calcWaveDamage(
+        let dmg = calcWaveDamage(
           gems,
           battle.combo,
           {
@@ -1019,6 +1035,11 @@ export const useGameStore = defineStore('game', () => {
           },
           hasRelic('relic_chain_reaction')
         )
+        // 龙纹暴击（V3）：每波消除 12% 概率伤害 ×1.5——随机爽感来源，技能石不暴击
+        if (dmg > 0 && battle.enemy && !enemyDead(battle.enemy) && Math.random() < GEM_CRIT_CHANCE) {
+          dmg = Math.round(dmg * GEM_CRIT_MULT)
+          addFloat('龙纹暴击！', 'crit')
+        }
         if (dmg > 0) await dealDamageToEnemy(dmg, battle.combo >= 3 ? 'crit' : 'damage')
       }
 
@@ -1116,6 +1137,20 @@ export const useGameStore = defineStore('game', () => {
       return
     }
 
+    // 龙脉异象（V3）：回合末随机事件，打破背板节奏（教学关不触发；反噬可能致死）
+    if (
+      battle.level?.tutorial !== 'match' &&
+      battle.enemy &&
+      !enemyDead(battle.enemy) &&
+      Math.random() < DRAGON_EVENT_CHANCE
+    ) {
+      applyDragonEvent()
+      if (battle.playerHP <= 0) {
+        finishBattle('defeat')
+        return
+      }
+    }
+
     // 死局检测与自动洗牌（REQ-BATTLE-005：不消耗回合）
     if (battle.board && !battle.board.hasAnyValidSwap()) {
       battle.shuffling = true
@@ -1204,6 +1239,54 @@ export const useGameStore = defineStore('game', () => {
       done++
     }
     return done
+  }
+
+  /**
+   * 龙脉异象（V3）：回合末随机事件。吉事件给补给/爆发（回响回血/护体加盾/
+   * 赐福与龙晶产出技能石/元素风暴聚色），凶事件制造小危机（反噬扣血/紊乱洗色）。
+   * 改盘效果统一由 core/events 落实（含现成匹配修复），这里只负责数值结算与反馈。
+   */
+  function applyDragonEvent(): void {
+    const ev = rollDragonEvent()
+    switch (ev.kind) {
+      case 'dragon_echo':
+        healPlayer(ev.hp!, '龙脉回响')
+        break
+      case 'scale_guard':
+        gainShield(ev.shield!, Infinity, '龙鳞护体')
+        break
+      case 'crystal_blessing':
+        if (battle.board && applyDragonEventToBoard(battle.board, ev) > 0) {
+          showTip('龙脉异象·龙晶赐福：一枚小技能石降临棋盘')
+          audio.play('select')
+        }
+        break
+      case 'bomb_drop':
+        if (battle.board && applyDragonEventToBoard(battle.board, ev) > 0) {
+          showTip('龙脉异象·天降龙晶：一颗炸弹石降临棋盘')
+          audio.play('select')
+        }
+        break
+      case 'element_storm': {
+        const n = battle.board ? applyDragonEventToBoard(battle.board, ev) : 0
+        if (n > 0) {
+          showTip(`龙脉异象·元素风暴：${n} 颗宝石化为${ELEMENT_INFO[ev.convertElement!].name}元素`)
+        }
+        break
+      }
+      case 'element_chaos': {
+        const n = battle.board ? applyDragonEventToBoard(battle.board, ev) : 0
+        if (n > 0) showTip(`龙脉异象·元素紊乱：${n} 颗宝石的元素被重置`)
+        break
+      }
+      case 'dragon_backlash':
+        // 反噬与龙脉代价同规则：无视护盾直接扣血
+        battle.playerHP = Math.max(0, battle.playerHP - ev.hp!)
+        addFloat(`-${ev.hp} (龙脉反噬)`, 'damage', 'hero')
+        doShake()
+        audio.play('hit')
+        break
+    }
   }
 
   /**

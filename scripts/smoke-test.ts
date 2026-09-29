@@ -3,7 +3,8 @@
  * 运行：npx tsx scripts/smoke-test.ts
  */
 import { GameBoard } from '../src/core/board'
-import { BOARD_SIZE, ELEMENTS, ELEMENT_COUNTER, counterOf, ELEMENT_MULT, WEAK_MULT_HUNTER, chapterHpMult, chapterAtkMult, skillChapterScale } from '../src/config/constants'
+import { BOARD_SIZE, ELEMENTS, ELEMENT_COUNTER, counterOf, ELEMENT_MULT, WEAK_MULT_HUNTER, chapterHpMult, chapterAtkMult, skillChapterScale, SWAP_HP_COST, DRAGON_EVENT_CHANCE, GEM_CRIT_CHANCE, GEM_CRIT_MULT } from '../src/config/constants'
+import { applyDragonEventToBoard, rollDragonEvent } from '../src/core/events'
 import {
   advanceEnemyPhase,
   calcWaveDamage,
@@ -561,6 +562,74 @@ console.log('\n[13] 关卡设计不变量（设计规则的可执行校验）')
     LEVELS.every((l) => l.waves.length > 0 || l.tutorial === 'match'),
     '除 1-1 教学关外，每关都有敌人波次'
   )
+}
+
+// ------------------------------------------------------------------
+console.log('\n[14] 龙脉异象事件池（V3 趣味包）')
+// ------------------------------------------------------------------
+{
+  // V3 常量取值合法
+  assert(
+    SWAP_HP_COST === 1 &&
+      DRAGON_EVENT_CHANCE > 0 &&
+      DRAGON_EVENT_CHANCE < 1 &&
+      GEM_CRIT_CHANCE > 0 &&
+      GEM_CRIT_CHANCE < 1 &&
+      GEM_CRIT_MULT > 1,
+    'V3 常量：操作扣血 1 点 / 异象与暴击概率在 (0,1) / 暴击倍率 > 1'
+  )
+
+  // 分布与配比：4000 次抽取，7 种事件均可抽中，吉凶约 7:3，数值在配置范围内
+  const N = 4000
+  const seen = new Set<string>()
+  let beneficial = 0
+  let echoMin = Infinity
+  let echoMax = -Infinity
+  let backMin = Infinity
+  let backMax = -Infinity
+  for (let i = 0; i < N; i++) {
+    const ev = rollDragonEvent()
+    seen.add(ev.kind)
+    if (ev.beneficial) beneficial++
+    if (ev.kind === 'dragon_echo') {
+      echoMin = Math.min(echoMin, ev.hp!)
+      echoMax = Math.max(echoMax, ev.hp!)
+    }
+    if (ev.kind === 'dragon_backlash') {
+      backMin = Math.min(backMin, ev.hp!)
+      backMax = Math.max(backMax, ev.hp!)
+    }
+  }
+  assert(seen.size === 7, `事件池 7 种事件均可抽中（实际 ${seen.size} 种）`)
+  const ratio = beneficial / N
+  assert(ratio > 0.64 && ratio < 0.76, `吉凶配比约 7:3（实际吉 ${(ratio * 100).toFixed(1)}%）`)
+  assert(echoMin >= 4 && echoMax <= 7, `龙脉回响回复量在 4~7（实际 ${echoMin}~${echoMax}）`)
+  assert(backMin >= 2 && backMax <= 4, `龙脉反噬伤害在 2~4（实际 ${backMin}~${backMax}）`)
+
+  // 棋盘落实：元素风暴转换后无现成匹配（否则下一次任意交换会被误判为有效交换）
+  const b = new GameBoard()
+  const stormN = applyDragonEventToBoard(b, {
+    kind: 'element_storm',
+    beneficial: true,
+    convertCount: 6,
+    convertElement: 'fire'
+  })
+  assert(stormN === 6 && b.findMatches().length === 0, `元素风暴转换 6 颗且修复现成匹配（实际 ${stormN} 颗）`)
+
+  // 产物放置：炸弹石落在普通宝石位
+  const bombN = applyDragonEventToBoard(b, { kind: 'bomb_drop', beneficial: true, special: 'bomb' })
+  let bombCount = 0
+  for (const row of b.grid) for (const cell of row) if (cell?.special === 'bomb') bombCount++
+  assert(bombN === 1 && bombCount === 1, '天降龙晶放置 1 颗炸弹石')
+
+  // 修复能力：人为构造现成匹配，repairImmediateMatches 后必须归零
+  const b2 = new GameBoard()
+  setCell(b2, 0, 0, 'fire')
+  setCell(b2, 0, 1, 'fire')
+  setCell(b2, 0, 2, 'fire')
+  assert(b2.findMatches().length > 0, '前置：构造出现成匹配')
+  b2.repairImmediateMatches()
+  assert(b2.findMatches().length === 0, 'repairImmediateMatches 清除所有现成匹配')
 }
 
 // ------------------------------------------------------------------

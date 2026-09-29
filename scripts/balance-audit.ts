@@ -33,10 +33,15 @@ import {
   BOARD_SIZE,
   chapterAtkMult,
   chapterHpMult,
+  DRAGON_EVENT_CHANCE,
+  GEM_CRIT_CHANCE,
+  GEM_CRIT_MULT,
   PASSIVE_HEAL_PER_TURN,
   skillChapterScale,
+  SWAP_HP_COST,
   WEAK_MULT_HUNTER
 } from '../src/config/constants'
+import { applyDragonEventToBoard, rollDragonEvent } from '../src/core/events'
 import type { ElementType, EnemyState, Pos } from '../src/types'
 
 const MAX_TURNS = 200
@@ -65,6 +70,8 @@ interface SimResult {
   playerDead: boolean
   skillTaps: number
   fours: number
+  /** 龙脉异象触发次数（V3） */
+  events: number
 }
 
 /* ------------------------------------------------------------------ */
@@ -89,7 +96,7 @@ export function simulateLevel(
   let playerBurn: { damage: number; turns: number } | null = null
   let enemyShield = 0
   const relics = new Set<string>()
-  const res: SimResult = { turns: 0, damageTaken: 0, hpLeft: 0, playerDead: false, skillTaps: 0, fours: 0 }
+  const res: SimResult = { turns: 0, damageTaken: 0, hpLeft: 0, playerDead: false, skillTaps: 0, fours: 0, events: 0 }
 
   let enemy: EnemyState | null = null
   let cfg = getEnemy('enemy_slime')
@@ -191,7 +198,7 @@ export function simulateLevel(
       )
       const gems = cleared.filter((c) => !c.special)
       if (gems.length > 0) {
-        const dmg = calcWaveDamage(
+        let dmg = calcWaveDamage(
           gems,
           combo,
           {
@@ -209,6 +216,10 @@ export function simulateLevel(
           },
           relics.has('relic_chain_reaction')
         )
+        // 龙纹暴击（V3）：与 store 同概率同步长
+        if (dmg > 0 && enemy && !enemyDead(enemy) && Math.random() < GEM_CRIT_CHANCE) {
+          dmg = Math.round(dmg * GEM_CRIT_MULT)
+        }
         damageEnemy(dmg)
       }
       for (const s of specialsTriggered) useSkill(s.special === 'ultimate')
@@ -313,13 +324,17 @@ export function simulateLevel(
       resolveCascade()
     }
 
+    // 龙脉代价（V3）：每次有效棋盘操作直接扣血（无视护盾；死局洗牌未操作不扣）
+    hp -= SWAP_HP_COST
+    res.damageTaken += SWAP_HP_COST
+
     if (enemy && enemyDead(enemy)) {
       if (waveIdx + 1 >= level.waves.length) break
       continue
     }
 
     // ---- 回合结束：被动回血 → 玩家 DOT → 敌人阶段 ----
-    if (healPerTurn) hp = Math.min(PLAYER_MAX_HP, hp + healPerTurn)
+    if (healPerTurn && hp > 0) hp = Math.min(PLAYER_MAX_HP, hp + healPerTurn)
     if (playerBurn) {
       hp -= playerBurn.damage
       res.damageTaken += playerBurn.damage
@@ -416,6 +431,27 @@ export function simulateLevel(
       }
     }
     for (const row of board.grid) for (const cell of row) if (cell && cell.frozen > 0) cell.frozen--
+
+    // 龙脉异象（V3）：与 store 同源的事件池与落实逻辑；反噬致死由下方 hp<=0 判定捕获
+    if (enemy && !enemyDead(enemy) && hp > 0 && Math.random() < DRAGON_EVENT_CHANCE) {
+      res.events++
+      const ev = rollDragonEvent()
+      switch (ev.kind) {
+        case 'dragon_echo':
+          hp = Math.min(PLAYER_MAX_HP, hp + ev.hp!)
+          break
+        case 'scale_guard':
+          shield += ev.shield!
+          break
+        case 'dragon_backlash':
+          hp -= ev.hp!
+          res.damageTaken += ev.hp!
+          break
+        default:
+          applyDragonEventToBoard(board, ev)
+      }
+    }
+
     if (hp <= 0) {
       res.playerDead = true
       break
@@ -435,7 +471,7 @@ const mean = (xs: number[]): number => (xs.length ? xs.reduce((a, b) => a + b, 0
 
 function report(runs: number): void {
   console.log(`\n=== 龙纹消消棋 数值审计（Runs=${runs}/关，主战=炎龙骑士，支援=冰巫+德鲁伊）===`)
-  console.log('关卡        | 回合 | 承伤 | 剩HP | 死亡 | 技能石 | 4消')
+  console.log('关卡        | 回合 | 承伤 | 剩HP | 死亡 | 技能石 | 4消 | 异象')
   for (const lv of LEVELS) {
     if (lv.tutorial === 'match') continue
     const rs = Array.from({ length: runs }, () =>
@@ -447,7 +483,8 @@ function report(runs: number): void {
         `${String(Math.round(mean(rs.map((r) => r.hpLeft)))).padStart(4)} | ` +
         `${String(rs.filter((r) => r.playerDead).length).padStart(2)}/${runs} | ` +
         `${mean(rs.map((r) => r.skillTaps)).toFixed(1).padStart(5)} | ` +
-        `${mean(rs.map((r) => r.fours)).toFixed(1)}`
+        `${mean(rs.map((r) => r.fours)).toFixed(1)} | ` +
+        `${mean(rs.map((r) => r.events)).toFixed(1)}`
     )
   }
 
