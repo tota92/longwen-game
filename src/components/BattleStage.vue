@@ -3,8 +3,9 @@
  * 战斗舞台（REQ-UI 顶部区域）—— 横板对战场景
  *
  * 版式：一条通栏 HUD + 一块横向对战场景。
- *   HUD     英雄血条 / 行动倒计时 / 怪物血条（含阶段）—— 只占一行
- *   次要区  支援·遗物·状态徽记（左）· 行动意图·蓄力进度（右）—— 单行图标与文本
+ *   HUD     英雄血条 / 怪物血条 —— 只占一行（倒计时不挤占血条）
+ *   次要区  支援·遗物·状态徽记（左）· 敌人行动倒计时·意图/蓄力（右）—— 单行图标与文本
+ *           · 行动倒计时以胶囊取代"意图"标签，与意图文案并列，归属敌方一目了然
  *   场景    双方立绘站在同一条地面线上横向相对，攻击 = 冲到对手身前
  * 原先铺在立绘下方的一叠信息行（名字/血条/意图/蓄力/遗物各占一行）被压进这两行，
  * 舞台高度不变的前提下，画面留给"角色与特效"的比例从约五成提升到约七成。
@@ -118,6 +119,29 @@ function intentText(): string {
     default:
       return `攻击 ${e.attack} 点伤害`
   }
+}
+
+/**
+ * 状态行只展示技能名（短、不省略）；完整说明走 intentTip() 呈现于提示区。
+ * 修 REQ-FEEL-005「怪物信息太长导致文字省略」：意图改为短名 + 点击看说明。
+ */
+function intentBrief(): string {
+  const e = enemy.value
+  if (!e) return ''
+  if (e.charging) return `蓄力 · ${e.charging.release}`
+  const action = e.pattern && e.pattern.length > 0 ? e.pattern[e.patternIndex % e.pattern.length] : null
+  if (action?.name) return action.name
+  switch (e.skill.type) {
+    case 'freezeBoard':
+      return `冻结 ${e.skill.size}×${e.skill.size}`
+    default:
+      return '攻击'
+  }
+}
+
+/** 点击意图：把完整技能说明弹到提示区（状态行容不下长文案） */
+function showIntentTip(): void {
+  store.showTip(intentText(), 4200)
 }
 
 /** 蓄力进度（已承受伤害 / 打断阈值） */
@@ -291,21 +315,6 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
         <span class="p-num num" :class="{ bump: heroBump }">{{ battle.playerHP }}</span>
       </div>
 
-      <div class="timer-wrap">
-        <div
-          v-if="enemy"
-          class="timer"
-          :class="{ danger: enemy.countdown <= 1 }"
-          :style="{ '--cd': `${cdRatio() * 360}deg` }"
-          role="img"
-          :aria-label="`敌人还有 ${enemy.countdown} 回合行动`"
-        >
-          <span class="timer-num num">{{ enemy.countdown }}</span>
-          <span class="timer-label">行动</span>
-        </div>
-        <span v-else class="timer-idle font-title">练习</span>
-      </div>
-
       <div v-if="enemy" class="plate plate-enemy" :style="{ '--actor': enemy.tint ?? '#ff5a3c' }">
         <span class="p-num num" :class="{ bump: enemyBump }">{{ Math.max(0, enemy.hp) }}</span>
         <span class="p-bar">
@@ -363,9 +372,20 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
         <span v-if="enemy.poison" class="mini-badge poison">
           <img :src="ICON.poison" alt="" aria-hidden="true" draggable="false" />{{ enemy.poison.turns }}
         </span>
-        <!-- 蓄力中：进度条取代意图文案（记住"要打断"比记住招式名更紧急） -->
+        <!-- 蓄力中：倒计时 + 技能名(点击看说明) + 打断进度 -->
         <template v-if="enemy.charging">
-          <span class="charge-tag">蓄力</span>
+          <div
+            class="timer"
+            :class="{ danger: enemy.countdown <= 1 }"
+            role="img"
+            :aria-label="`敌人还有 ${enemy.countdown} 回合行动`"
+          >
+            <span class="timer-num num">{{ enemy.countdown }}</span>
+            <span class="timer-label">行动</span>
+          </div>
+          <button class="intent" @click="showIntentTip">
+            <span class="intent-name">{{ intentBrief() }}</span>
+          </button>
           <span class="charge-track">
             <i :style="{ width: `${chargeRatio() * 100}%` }"></i>
           </span>
@@ -374,8 +394,18 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
           </span>
         </template>
         <template v-else>
-          <span class="intent-tag">意图</span>
-          <span class="intent-text">{{ intentText() }}</span>
+          <div
+            class="timer"
+            :class="{ danger: enemy.countdown <= 1 }"
+            role="img"
+            :aria-label="`敌人还有 ${enemy.countdown} 回合行动`"
+          >
+            <span class="timer-num num">{{ enemy.countdown }}</span>
+            <span class="timer-label">行动</span>
+          </div>
+          <button class="intent" @click="showIntentTip">
+            <span class="intent-name">{{ intentBrief() }}</span>
+          </button>
         </template>
       </div>
     </div>
@@ -521,7 +551,7 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
 /* ---------- HUD 行 ---------- */
 .hud-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   gap: var(--sp-2);
   flex-shrink: 0;
@@ -655,75 +685,40 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   z-index: 3;
 }
 
-/* ---------- 中央行动倒计时 ---------- */
-.timer-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 36px;
-}
+/* ---------- 敌方行动倒计时（并入 meta 敌侧行，取代"意图"标签，与意图文案并列） ---------- */
 .timer {
-  --cd: 360deg;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  /* 外环=倒计时进度，内圈=数字与标签 */
-  background: conic-gradient(
-    from -90deg,
-    rgba(240, 216, 120, 0.9) 0deg,
-    rgba(240, 216, 120, 0.9) var(--cd),
-    rgba(255, 255, 255, 0.08) var(--cd),
-    rgba(255, 255, 255, 0.08) 360deg
-  );
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--border-gold);
+  line-height: 1.4;
 }
-.timer::before {
-  content: '';
-  position: absolute;
-  inset: 3px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 50% 32%, #241a2e, #120c18);
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.7);
-}
-.timer > * { position: relative; z-index: 1; }
 .timer-num {
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 800;
   color: var(--gold-light);
-  line-height: 1;
-  text-shadow: 0 0 8px rgba(240, 216, 120, 0.5);
+  text-shadow: 0 0 6px rgba(240, 216, 120, 0.5);
 }
-.timer-label { font-size: 7px; color: rgba(245, 240, 230, 0.6); }
-.timer-idle {
-  font-size: 11px;
-  color: var(--gold-light);
-  letter-spacing: 1px;
-  opacity: 0.85;
+.timer-label {
+  font-size: 9px;
+  color: rgba(245, 240, 230, 0.6);
 }
-
-/* ≤1 回合高亮警告（REQ-ENEMY-001） */
+/* ≤1 回合：红色脉冲，提示下回合敌人就要动手 */
 .timer.danger {
-  background: conic-gradient(
-    from -90deg,
-    #ff6a45 0deg,
-    #ff6a45 var(--cd),
-    rgba(255, 255, 255, 0.08) var(--cd),
-    rgba(255, 255, 255, 0.08) 360deg
-  );
+  border-color: #ff6a45;
   animation: cd-danger 0.6s ease-in-out infinite;
 }
 .timer.danger .timer-num {
   color: #ff7a59;
-  text-shadow: 0 0 10px rgba(255, 90, 60, 0.9);
+  text-shadow: 0 0 8px rgba(255, 90, 60, 0.9);
 }
 @keyframes cd-danger {
   0%, 100% { box-shadow: 0 0 0 rgba(255, 90, 60, 0); }
-  50% { box-shadow: 0 0 18px rgba(255, 90, 60, 0.9); }
+  50% { box-shadow: 0 0 12px rgba(255, 90, 60, 0.9); }
 }
 
 /* ---------- 次要信息行 ---------- */
@@ -788,34 +783,26 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   border: 1px solid var(--border-gold);
 }
 
-.intent-tag {
+/* 意图：只展示技能名（短、单行不省略），点击弹完整说明到提示区 */
+.intent {
   flex-shrink: 0;
-  font-size: 9px;
-  color: #ffb199;
-  border: 1px solid rgba(255, 177, 145, 0.4);
-  border-radius: 6px;
-  padding: 0 4px;
-}
-.intent-text {
-  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
   font-size: 9.5px;
-  color: rgba(245, 240, 230, 0.68);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  color: var(--gold-light);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline dotted rgba(240, 216, 120, 0.4);
+  text-underline-offset: 2px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
 }
+.intent:hover .intent-name { color: var(--gold-light); }
+.intent:active .intent-name { opacity: 0.75; }
+.intent-name { white-space: nowrap; }
 
-.charge-tag {
-  flex-shrink: 0;
-  font-size: 9px;
-  font-weight: 700;
-  color: #1a0c06;
-  background: linear-gradient(180deg, #ffd98a, #f0a03c);
-  border-radius: 6px;
-  padding: 0 5px;
-  animation: charge-blink 0.7s ease-in-out infinite;
-}
 .charge-track {
   flex: 1;
   min-width: 0;
@@ -835,10 +822,6 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   transition: width 0.28s ease;
 }
 .charge-text { flex-shrink: 0; font-size: 9px; color: #ffcf9a; }
-@keyframes charge-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
 
 /* ============================================================
  * 对战场景：横板竞技场的舞台本体
@@ -1370,15 +1353,6 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   0%, 100% { box-shadow: var(--shadow-panel); }
   50% { box-shadow: var(--shadow-panel), 0 0 18px rgba(255, 140, 50, 0.5); }
 }
-.stage-charging .timer {
-  background: conic-gradient(
-    from -90deg,
-    #ffb347 0deg,
-    #ffb347 var(--cd),
-    rgba(255, 255, 255, 0.08) var(--cd),
-    rgba(255, 255, 255, 0.08) 360deg
-  );
-}
 .stage-charging .timer-num {
   color: #ffc46b;
   text-shadow: 0 0 10px rgba(255, 170, 70, 0.9);
@@ -1399,11 +1373,9 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   .mini-icon { width: 20px; height: 20px; }
   .mini-badge { font-size: 10px; }
   .mini-badge img { width: 11px; height: 11px; }
-  .intent-text { font-size: 10.5px; }
-  .timer { width: 46px; height: 46px; }
-  .timer-num { font-size: 19px; }
-  .timer-label { font-size: 8.5px; }
-  .timer-wrap { min-width: 50px; }
+  .intent-name { font-size: 11px; }
+  .timer-num { font-size: 14px; }
+  .timer-label { font-size: 10px; }
   .goal-text { font-size: 14px; }
   .dmg-damage { font-size: 21px; }
   .dmg-crit { font-size: 30px; }
@@ -1430,9 +1402,8 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   .p-num { font-size: 11px; min-width: 20px; }
   .mini-icon { width: 15px; height: 15px; }
   .mini-badge { font-size: 8.5px; }
-  .intent-text { font-size: 9px; }
-  .timer { width: 30px; height: 30px; }
-  .timer-num { font-size: 12.5px; }
+  .intent-name { font-size: 9px; }
+  .timer-num { font-size: 11px; }
   .meta-row { min-height: 13px; }
   .scene { border-radius: 8px; }
 }
