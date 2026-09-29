@@ -323,7 +323,6 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
           <i class="p-ticks" aria-hidden="true"></i>
         </span>
         <span class="p-name font-title">{{ enemy.display }}</span>
-        <span v-if="isBoss" class="p-phase num">{{ enemy.phase }}/{{ enemy.phaseHP.length }}</span>
       </div>
       <div v-else class="plate plate-empty" aria-hidden="true"></div>
     </div>
@@ -360,6 +359,10 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
       </div>
 
       <div v-if="enemy" class="meta-side meta-enemy">
+        <!-- 阶段数：Boss 多阶段时显示，常驻状态栏（不放血条占位） -->
+        <span v-if="isBoss" class="mini-badge phase" role="img" :aria-label="`Boss 第 ${enemy.phase}/${enemy.phaseHP.length} 阶段`">
+          {{ enemy.phase }}/{{ enemy.phaseHP.length }}
+        </span>
         <span v-if="enemy.frozen > 0" class="mini-badge freeze">
           <img :src="ICON.freeze" alt="" aria-hidden="true" draggable="false" />{{ enemy.frozen }}
         </span>
@@ -773,14 +776,12 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
 .mini-badge.poison { color: #b58bff; border-color: rgba(160, 107, 255, 0.45); }
 .mini-badge.freeze { color: #9fdcff; border-color: rgba(140, 210, 255, 0.5); }
 .mini-badge.stun { color: #ffd98a; border-color: rgba(240, 200, 120, 0.5); }
-
-.p-phase {
-  flex-shrink: 0;
-  font-size: 9px;
-  padding: 0 4px;
-  border-radius: 6px;
+/* 阶段徽记：金色，标 Boss 当前/总阶段 */
+.mini-badge.phase {
   color: var(--gold-light);
-  border: 1px solid var(--border-gold);
+  border-color: var(--border-gold);
+  font-weight: 700;
+  padding-left: 4px;
 }
 
 /* 意图：只展示技能名（短、单行不省略），点击弹完整说明到提示区 */
