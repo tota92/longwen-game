@@ -263,10 +263,15 @@ function quickToggle(entry: GemEntry, e: MouseEvent): void {
   justify-content: center;
   gap: 4px;
   padding: 3px 1px 2px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--c) 24%, rgba(255, 255, 255, 0.08));
   border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.035);
+  background-color: rgba(255, 255, 255, 0.035);
+  /* 元素色晕染 + 玻璃顶光：六张卡各自带一点属性光，不再是六块灰板 */
+  background-image:
+    radial-gradient(circle at 50% 24%, color-mix(in srgb, var(--c) 15%, transparent), transparent 66%),
+    var(--sheen-top);
   cursor: pointer;
+  box-shadow: var(--hi-top);
   transition: border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast);
 }
 .gem-card:active { transform: scale(0.94); }
@@ -290,7 +295,8 @@ function quickToggle(entry: GemEntry, e: MouseEvent): void {
   border-radius: 5px;
   color: #14100a;
   background: linear-gradient(180deg, var(--gold-light), var(--gold));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 244, 200, 0.5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 .gem-img {
@@ -322,6 +328,7 @@ function quickToggle(entry: GemEntry, e: MouseEvent): void {
   height: 2.5px;
   border-radius: 2px;
   background: rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
   overflow: hidden;
 }
 .gem-progress i {

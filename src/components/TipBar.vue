@@ -67,10 +67,11 @@ const store = useGameStore()
     clamp(8px, 3.4cqw, 13px);
   border-radius: 12px;
   /* 浮在宝石之上：底色更深 + 背景模糊，压在棋格上依然读得清 */
-  background: rgba(11, 8, 19, 0.9);
+  background-color: rgba(11, 8, 19, 0.9);
+  background-image: var(--sheen-top);
   backdrop-filter: blur(7px);
   border: 1px solid rgba(120, 190, 255, 0.34);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--hi-top), 0 8px 22px rgba(0, 0, 0, 0.55);
   /* 本体不拦截点击，保证棋盘下沿仍可操作 */
   pointer-events: none;
 }

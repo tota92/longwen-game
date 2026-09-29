@@ -305,9 +305,29 @@ const frozenMarkIcon = iconUrl(FROZEN_MARK_ICON)
     inset 0 0 0 1px rgba(255, 255, 255, 0.05),
     inset 0 0 32px rgba(0, 0, 0, 0.6),
     0 10px 30px rgba(0, 0, 0, 0.55),
-    0 0 0 4px rgba(13, 10, 23, 0.9);
+    0 0 0 4px rgba(13, 10, 23, 0.9),
+    0 0 26px rgba(212, 175, 55, 0.14);
   touch-action: none; /* 阻止页面滚动，滑动交换专用 */
   overflow: hidden;
+}
+
+/* 四角金色角饰：与内描金线组成双层框饰（伪元素，不接交互、不挡落子） */
+.board::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  pointer-events: none;
+  z-index: 5;
+  background:
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) left top / 18px 1px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) left top / 1px 18px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) right top / 18px 1px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) right top / 1px 18px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) left bottom / 18px 1px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) left bottom / 1px 18px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) right bottom / 18px 1px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) right bottom / 1px 18px;
+  background-repeat: no-repeat;
 }
 
 /* 内描金线：把棋盘从背景里"框"出来，避免大面积留白显得空 */

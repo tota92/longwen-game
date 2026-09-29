@@ -273,11 +273,15 @@ function openDetail(s: SkillView): void {
   gap: 5px;
   padding: 3px 5px;
   min-width: 0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid color-mix(in srgb, var(--hc) 22%, rgba(255, 255, 255, 0.08));
   border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.035);
+  background-color: rgba(255, 255, 255, 0.035);
+  background-image:
+    radial-gradient(circle at 12% 50%, color-mix(in srgb, var(--hc) 13%, transparent), transparent 62%),
+    var(--sheen-top);
   cursor: pointer;
   text-align: left;
+  box-shadow: var(--hi-top);
   transition: border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast);
 }
 .skill-card:active { transform: scale(0.96); }
@@ -328,7 +332,8 @@ function openDetail(s: SkillView): void {
   border-radius: 5px;
   color: #14100a;
   background: linear-gradient(180deg, var(--gold-light), var(--gold));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 244, 200, 0.5);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
 .skill-body {

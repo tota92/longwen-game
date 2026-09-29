@@ -209,9 +209,11 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
   height: 36px;
   border-radius: var(--r-md);
   border: 1px solid var(--border-gold);
-  background: var(--bg-panel);
+  background-color: var(--bg-panel);
+  background-image: var(--sheen-top);
   color: var(--text-1);
   cursor: pointer;
+  box-shadow: var(--hi-top), var(--hi-bottom);
   transition: transform var(--dur-fast) var(--ease-out);
 }
 .top-btn:active { transform: scale(0.92); }
@@ -248,9 +250,29 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
   gap: var(--sp-3);
 }
 .level-name {
+  position: relative;
+  padding: 0 16px;
   font-size: 16px;
   color: var(--gold-light);
   letter-spacing: 3px;
+  text-shadow: 0 0 12px rgba(212, 175, 55, 0.35);
+}
+/* 两侧渐隐发丝线：与主界面标题分隔线同一套装饰语言 */
+.level-name::before,
+.level-name::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 1px;
+}
+.level-name::before {
+  left: 0;
+  background: linear-gradient(90deg, transparent, var(--hairline-gold));
+}
+.level-name::after {
+  right: 0;
+  background: linear-gradient(270deg, transparent, var(--hairline-gold));
 }
 .wave-text {
   font-size: 11px;
@@ -261,7 +283,13 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
 }
 .turn-text {
   font-size: 11px;
-  color: var(--text-3);
+  color: var(--text-2);
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline-gold);
+  background-color: rgba(212, 175, 55, 0.08);
+  background-image: var(--sheen-top);
+  box-shadow: var(--hi-top);
 }
 
 /* 棋盘容器：游玩区，吃掉顶部条 / 展示区 / 信息区之外的全部剩余空间 */
@@ -347,6 +375,7 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
   flex-shrink: 0;
 }
 .tab-btn {
+  position: relative;
   flex: 1;
   display: flex;
   align-items: center;
@@ -369,11 +398,22 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
   opacity: 0.65;
   transition: opacity var(--dur-fast), filter var(--dur-fast);
 }
-/* 选中态：金色描边 + 图标点亮，与全站魔幻纹章语言一致 */
+/* 选中态：金色渐变底 + 描边 + 底部渐隐指示条，与全站魔幻纹章语言一致 */
 .tab-btn.active {
   color: var(--gold-light);
   border-color: var(--border-gold-strong);
-  background: rgba(212, 175, 55, 0.12);
+  background-image: linear-gradient(180deg, rgba(240, 216, 120, 0.2), rgba(212, 175, 55, 0.05));
+  box-shadow: var(--hi-top), 0 0 10px rgba(212, 175, 55, 0.16);
+}
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  bottom: 1px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold-light), transparent);
 }
 .tab-btn.active img {
   opacity: 1;

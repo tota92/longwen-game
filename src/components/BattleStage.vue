@@ -639,14 +639,15 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   border-radius: 8px;
   background: rgba(10, 7, 18, 0.62);
   border: 1px solid color-mix(in srgb, var(--actor) 45%, transparent);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--hi-top), 0 2px 8px rgba(0, 0, 0, 0.4);
 }
+/* 教学关无敌人：内敛凹槽而非虚线占位，避免"没渲染出来"的半成品观感 */
 .plate-empty {
   justify-content: center;
   min-height: 18px;
   background: rgba(10, 7, 18, 0.3);
-  border-style: dashed;
-  border-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.45);
 }
 .p-name {
   flex-shrink: 1;
@@ -754,15 +755,33 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
 .p-ticks {
   position: absolute;
   inset: 0;
+  /* 10 段细刻度：比 4 段粗格更接近仪表质感，且不割裂血条整体 */
   background-image: repeating-linear-gradient(
     90deg,
     transparent 0,
-    transparent calc(25% - 1px),
-    rgba(0, 0, 0, 0.38) calc(25% - 1px),
-    rgba(0, 0, 0, 0.38) 25%
+    transparent calc(10% - 1px),
+    rgba(0, 0, 0, 0.28) calc(10% - 1px),
+    rgba(0, 0, 0, 0.28) 10%
   );
   pointer-events: none;
   z-index: 3;
+}
+/* 玻璃面缓慢扫光：静态 HUD 的一点生命感（纯装饰，reduced-motion 下关停） */
+.p-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 34%;
+  left: -40%;
+  background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.16), transparent);
+  pointer-events: none;
+  z-index: 4;
+  animation: bar-sheen 3.6s ease-in-out infinite;
+}
+@keyframes bar-sheen {
+  0%, 55% { left: -40%; }
+  90%, 100% { left: 110%; }
 }
 
 /* ---------- 敌方行动倒计时（并入 meta 敌侧行，取代"意图"标签，与意图文案并列） ---------- */
@@ -911,9 +930,53 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   border-radius: 10px;
   overflow: hidden;
   background:
+    /* 两道斜向体积光：把"纯色块背景"变成有光有纵深的场地 */
+    linear-gradient(104deg, transparent 40%, rgba(240, 216, 120, 0.06) 46%, transparent 53%),
+    linear-gradient(76deg, transparent 58%, rgba(255, 255, 255, 0.045) 65%, transparent 72%),
     linear-gradient(180deg, rgba(24, 18, 44, 0.85), rgba(40, 24, 52, 0.6) 62%, rgba(62, 34, 58, 0.78)),
     radial-gradient(ellipse at 50% 106%, rgba(212, 175, 55, 0.22), transparent 62%);
   box-shadow: inset 0 0 26px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* 四角金色角饰：发丝线括号，把场景框成"一幅画"（装饰层，不接交互） */
+.scene::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  pointer-events: none;
+  z-index: 4;
+  background:
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) left top / 14px 1px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) left top / 1px 14px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) right top / 14px 1px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) right top / 1px 14px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) left bottom / 14px 1px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) left bottom / 1px 14px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) right bottom / 14px 1px,
+    linear-gradient(var(--hairline-gold), var(--hairline-gold)) right bottom / 1px 14px;
+  background-repeat: no-repeat;
+}
+
+/* 浮尘微粒：两层不同速度的光点缓慢上浮，场地"活着"但不抢戏 */
+.scene::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  background-image:
+    radial-gradient(circle, rgba(240, 216, 120, 0.5) 0 1px, transparent 1.8px),
+    radial-gradient(circle, rgba(255, 255, 255, 0.38) 0 1px, transparent 1.6px);
+  background-size: 96px 84px, 140px 110px;
+  background-position: 12px 20px, 60px 70px;
+  -webkit-mask: linear-gradient(180deg, transparent, #000 34%, #000 68%, transparent);
+  mask: linear-gradient(180deg, transparent, #000 34%, #000 68%, transparent);
+  opacity: 0.5;
+  animation: motes-drift 16s linear infinite;
+}
+/* 位移量 = 各自 tile 高度的整数倍，循环无缝 */
+@keyframes motes-drift {
+  to { background-position: 12px -64px, 60px -40px; }
 }
 
 /* 远景：两团山影，把"场地"从纯色块变成有纵深的场景 */
@@ -1532,5 +1595,13 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   .attr-strip { gap: 3px; padding: 1px 6px; }
   .attr-chip { font-size: 8.5px; }
   .attr-chip img { width: 10px; height: 10px; }
+}
+
+/* 纯装饰循环动画在 reduced-motion 下关停（玩法动画不受影响） */
+@media (prefers-reduced-motion: reduce) {
+  .p-bar::after,
+  .scene::after {
+    animation: none;
+  }
 }
 </style>

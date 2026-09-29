@@ -147,10 +147,12 @@ function clearedInChapter(levels: typeof LEVELS): number {
   height: 36px;
   border-radius: 10px;
   border: 1px solid var(--border-gold);
-  background: var(--bg-panel);
+  background-color: var(--bg-panel);
+  background-image: var(--sheen-top);
   color: #f5f0e6;
   font-size: 16px;
   cursor: pointer;
+  box-shadow: var(--hi-top), var(--hi-bottom);
 }
 .back-btn img {
   width: 20px;
@@ -163,6 +165,7 @@ function clearedInChapter(levels: typeof LEVELS): number {
   font-size: 19px;
   color: var(--gold-light);
   letter-spacing: 4px;
+  text-shadow: 0 0 14px rgba(212, 175, 55, 0.4);
 }
 .header-space { width: 36px; }
 
@@ -187,10 +190,11 @@ function clearedInChapter(levels: typeof LEVELS): number {
 .chapter-progress {
   font-size: 10px;
   letter-spacing: 0;
-  color: rgba(245, 240, 230, 0.45);
-  border: 1px solid rgba(245, 240, 230, 0.15);
+  color: rgba(245, 240, 230, 0.5);
+  border: 1px solid var(--hairline-gold);
   border-radius: 999px;
   padding: 1px 7px;
+  background: rgba(212, 175, 55, 0.06);
 }
 
 .level-grid {
@@ -225,10 +229,12 @@ function clearedInChapter(levels: typeof LEVELS): number {
 .state-cleared .node-icon { filter: saturate(0.65) brightness(0.92); }
 .state-cleared .node-name { color: rgba(240, 232, 214, 0.8); }
 
-/* 精英关：冷色描边，与普通关区分 */
+/* 精英关：冷色描边，与普通关区分（叠加式背景，保留面板底色与顶光） */
 .type-elite {
   border-color: rgba(150, 200, 255, 0.42);
-  background: linear-gradient(180deg, rgba(120, 190, 255, 0.12), rgba(120, 190, 255, 0.02));
+  background-image:
+    linear-gradient(180deg, rgba(120, 190, 255, 0.12), rgba(120, 190, 255, 0.02)),
+    var(--sheen-top);
 }
 
 .node-icon {
@@ -298,19 +304,30 @@ function clearedInChapter(levels: typeof LEVELS): number {
 }
 
 .state-locked {
-  opacity: 0.45;
+  opacity: 0.5;
   cursor: not-allowed;
+}
+/* 锁形图标收小降灰：它是状态标记而非卡片主视觉 */
+.state-locked .node-icon {
+  width: 26px;
+  height: 26px;
+  filter: grayscale(0.55) brightness(0.85) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
 }
 .state-current {
   border-color: var(--gold);
-  box-shadow: 0 0 14px rgba(212, 175, 55, 0.35);
+  background-image:
+    radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.16), transparent 62%),
+    var(--sheen-top);
+  box-shadow: var(--hi-top), 0 0 14px rgba(212, 175, 55, 0.35);
 }
 .type-boss {
   grid-column: span 3;
   flex-direction: row;
   gap: 12px;
   padding: 14px;
-  background: linear-gradient(90deg, rgba(255, 90, 60, 0.12), rgba(255, 90, 60, 0.03));
+  background-image:
+    linear-gradient(90deg, rgba(255, 90, 60, 0.12), rgba(255, 90, 60, 0.03)),
+    var(--sheen-top);
   border-color: rgba(255, 90, 60, 0.45);
 }
 .type-boss .node-name { font-size: 15px; }
