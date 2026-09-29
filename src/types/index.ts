@@ -4,6 +4,7 @@
  */
 import type { IconId } from '@/config/iconIds'
 import type { SpriteId } from '@/config/spriteIds'
+import type { FxVariant } from '@/config/fxVariants'
 
 /** 元素类型：火/水/木/光/暗/雷 */
 export type ElementType = 'fire' | 'water' | 'wood' | 'light' | 'dark' | 'thunder'
@@ -334,9 +335,10 @@ export interface FloatText {
 
 /**
  * 角色动作状态（驱动战斗展示区的立绘动画）
- * idle 待机呼吸 / attack 出手前冲 / hurt 受击后仰 / dead 倒地消散
+ * idle 待机呼吸 / attack 出手前冲 / skill 技能释放（蓄力下蹲→浮空前倾→落地）
+ * hurt 受击后仰 / dead 倒地消散
  */
-export type ActorAction = 'idle' | 'attack' | 'hurt' | 'dead'
+export type ActorAction = 'idle' | 'attack' | 'skill' | 'hurt' | 'dead'
 
 /** 命中特效类型（战斗展示区的攻击反馈元素） */
 export type HitFxKind =
@@ -359,6 +361,12 @@ export interface HitFx {
   side: 'hero' | 'enemy'
   /** 特效主题色（取英雄/敌人的元素色） */
   color: string
+  /**
+   * 具体招式动画（见 src/config/fxVariants.ts）。
+   * store 只负责说出"这一击是什么招"，渲染层按变体挑对应的 SVG 动画；
+   * 缺省时按 kind 退回通用视觉。
+   */
+  variant?: FxVariant
 }
 
 /** 宝石展示区：单个元素宝石的本局统计 */

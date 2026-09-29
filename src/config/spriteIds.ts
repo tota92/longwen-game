@@ -30,3 +30,25 @@ export const ALL_SPRITE_IDS = [...HERO_SPRITE_IDS, ...ENEMY_SPRITE_IDS] as const
 
 /** 立绘 ID 联合类型 */
 export type SpriteId = (typeof ALL_SPRITE_IDS)[number]
+
+/**
+ * 立绘的固有朝向：美术出图时决定、无法从文件读出，只能在这里登记。
+ * 战斗舞台是横板对望构图——英雄站在左必须朝右、怪物站在右必须朝左，
+ * 朝向不符的立绘由 BattleStage 水平镜像修正（见 spriteFlipped）。
+ */
+export const SPRITE_FACING: Record<SpriteId, 'left' | 'right'> = {
+  hero_flame_knight: 'right',
+  hero_frost_witch: 'left',
+  hero_forest_druid: 'right',
+  enemy_slime: 'right',
+  enemy_fire_lizard: 'left',
+  enemy_frost_ghost: 'left',
+  enemy_dragon_whelp: 'right',
+  enemy_ancient_dragon: 'right'
+}
+
+/** 该立绘站在指定阵营时是否需要水平镜像（英雄应朝右、怪物应朝左） */
+export function spriteFlipped(id: SpriteId, side: 'hero' | 'enemy'): boolean {
+  const facing = SPRITE_FACING[id]
+  return side === 'hero' ? facing === 'left' : facing === 'right'
+}

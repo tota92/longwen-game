@@ -48,6 +48,7 @@ import { applyDragonEventToBoard, rollDragonEvent } from '@/core/events'
 import { getLevel } from '@/config/levels'
 import { getEnemy } from '@/config/enemies'
 import { getRelic, RELICS } from '@/config/relics'
+import { ENEMY_ACTION_FX, fxLife, fxPose, heroSkillFx, type FxVariant } from '@/config/fxVariants'
 import { getHero, HEROES } from '@/config/heroes'
 import { buildGemEntries, createGemStats } from '@/core/gems'
 import type {
@@ -457,7 +458,8 @@ export const useGameStore = defineStore('game', () => {
     apply(action)
     clearTimeout(actionTimers[side])
     if (action === 'idle' || action === 'dead') return
-    const dur = action === 'attack' ? ANIM.actorAttack : ANIM.actorHurt
+    const dur =
+      action === 'attack' ? ANIM.actorAttack : action === 'skill' ? ANIM.actorSkill : ANIM.actorHurt
     actionTimers[side] = window.setTimeout(() => {
       const current = side === 'hero' ? battle.heroAction : battle.enemyAction
       if (current === action) apply('idle')
@@ -473,13 +475,22 @@ export const useGameStore = defineStore('game', () => {
     hitFxs.value = []
   }
 
-  /** 生成一次命中特效（side = 出手方，特效落在其对面角色身上） */
-  function spawnHitFx(kind: HitFxKind, side: 'hero' | 'enemy', color: string): void {
-    const fx: HitFx = { id: fxUid++, kind, side, color }
+  /**
+   * 生成一次命中特效（side = 出手方，特效落在其对面角色身上）。
+   * @param variant 具体招式动画（见 src/config/fxVariants.ts）；缺省时渲染层按 kind 兜底。
+   *                驻留时长按变体查表——各招式动画长短差很多，统一时长会把长动画拦腰截断。
+   */
+  function spawnHitFx(
+    kind: HitFxKind,
+    side: 'hero' | 'enemy',
+    color: string,
+    variant?: FxVariant
+  ): void {
+    const fx: HitFx = { id: fxUid++, kind, side, color, variant }
     hitFxs.value.push(fx)
     window.setTimeout(() => {
       hitFxs.value = hitFxs.value.filter((f) => f.id !== fx.id)
-    }, ANIM.hitFx)
+    }, fxLife(variant, ANIM.hitFx))
   }
 
   /** 敌人主题色：优先取变体色，否则按敌人 ID 取元素近似色 */
@@ -657,11 +668,13 @@ export const useGameStore = defineStore('game', () => {
    * 玩家对敌人造成伤害（含 V2 冻结增伤 / 凝甲护盾 / 阶段转换 / 狂怒）
    * @param source 'hero' = 英雄主动出手（切攻击态 + 命中特效）；'dot' = 灼烧/中毒等持续伤害
    *               （只有怪物受击反馈，英雄不做出手动作）
+   * @param fxVariant 这一击该播的招式动画；缺省时按 kind 兜底（技能→英雄专属，暴击→交叉双斩，其余→普攻斩击）
    */
   async function dealDamageToEnemy(
     dmg: number,
     kind: FloatText['kind'],
-    source: 'hero' | 'dot' = 'hero'
+    source: 'hero' | 'dot' = 'hero',
+    fxVariant?: FxVariant
   ): Promise<void> {
     const enemy = battle.enemy
     if (!enemy || dmg <= 0) return
@@ -680,9 +693,13 @@ export const useGameStore = defineStore('game', () => {
     battle.totalDamage += rest
     if (rest > 0) addFloat(`-${rest}`, kind)
     // 战斗展示区反馈：命中特效落在挨打的一方身上（side = 出手方，组件内部会取反）
-    if (source === 'hero') setActorAction('hero', 'attack')
+    const isSkill = source === 'hero' && kind === 'skill'
+    // 招式动画：显式指定优先；暴击（含打断蓄力的反噬）走交叉双斩，其余走普攻斩击
+    const variant: FxVariant = fxVariant ?? (kind === 'crit' ? 'cross_slash' : 'slash_basic')
+    // 身位跟着招式走：贴身招式三段式前冲，施法/远程招式浮空释放
+    if (source === 'hero') setActorAction('hero', fxPose(variant))
     setActorAction('enemy', 'hurt')
-    spawnHitFx(source === 'hero' && kind === 'skill' ? 'skill' : 'slash', 'hero', enemyColor())
+    spawnHitFx(isSkill || kind === 'crit' ? 'skill' : 'slash', 'hero', enemyColor(), variant)
     audio.play(kind === 'skill' ? 'skill' : 'combo', Math.min(battle.combo, 8))
 
     // 蓄力打断：蓄力期间累计承受伤害达到阈值即打断（Boss 蓄力失败并吃反噬）
@@ -702,7 +719,7 @@ export const useGameStore = defineStore('game', () => {
       // 阶段转换全屏攻击（5.2 远古巨龙：全屏攻击 15）
       if (enemy.phaseBlastDamage > 0) {
         await sleep(200)
-        damagePlayer(enemy.phaseBlastDamage)
+        damagePlayer(enemy.phaseBlastDamage, 'beam_burst')
       }
     }
 
@@ -779,8 +796,11 @@ export const useGameStore = defineStore('game', () => {
     return died
   }
 
-  /** 敌人对玩家造成伤害（护盾优先抵扣，REQ-HERO-103） */
-  function damagePlayer(dmg: number): void {
+  /**
+   * 敌人对玩家造成伤害（护盾优先抵扣，REQ-HERO-103）
+   * @param variant 这一招的动画（调用方从 ENEMY_ACTION_FX 取）；缺省走重击冲击波
+   */
+  function damagePlayer(dmg: number, variant?: FxVariant): void {
     let rest = dmg
     if (battle.playerShield > 0) {
       const absorbed = Math.min(battle.playerShield, rest)
@@ -794,9 +814,10 @@ export const useGameStore = defineStore('game', () => {
       doShake()
       audio.play('hit')
       // 战斗展示区反馈：怪物出手，英雄受击
-      setActorAction('enemy', 'attack')
+      const move = variant ?? 'heavy_impact'
+      setActorAction('enemy', fxPose(move))
       setActorAction('hero', 'hurt')
-      spawnHitFx('impact', 'enemy', enemyColor())
+      spawnHitFx('impact', 'enemy', enemyColor(), move)
     }
   }
 
@@ -810,7 +831,7 @@ export const useGameStore = defineStore('game', () => {
     if (healed > 0) {
       addFloat(`+${healed}${reason ? ` (${reason})` : ''}`, 'heal')
       audio.play('heal')
-      spawnHitFx('heal', 'hero', '#7dedb2')
+      spawnHitFx('heal', 'hero', '#7dedb2', 'heal_bloom')
     }
     const overheal = amount - healed
     if (overheal > 0 && hasRelic('relic_iron_wall')) {
@@ -827,7 +848,7 @@ export const useGameStore = defineStore('game', () => {
     if (gain <= 0) return
     battle.playerShield += gain
     addFloat(`护盾 +${gain}${reason ? ` (${reason})` : ''}`, 'info')
-    spawnHitFx('heal', 'hero', '#68d8ff')
+    spawnHitFx('heal', 'hero', '#68d8ff', 'heal_bloom')
   }
 
   /** 释放主战英雄技能（技能石触发，REQ-HERO-002；V2：元素克制/护甲/章节缩放/奥术回响） */
@@ -843,10 +864,12 @@ export const useGameStore = defineStore('game', () => {
       hero.color
     )
     audio.play('skill')
-    // 纯辅助技能（只回血/加盾）不经过 dealDamageToEnemy，这里统一给出"英雄施法"姿态
-    setActorAction('hero', 'attack')
-    // 施法蓄能特效用例：出手方身上的爆闪，让"技能释放"有明确前摇（战斗舞台渲染）
-    spawnHitFx('cast', 'hero', hero.color)
+    /** 这一档技能的专属招式动画（见 src/config/fxVariants.ts 的注册表） */
+    const moveFx = heroSkillFx(hero.id, hero.element, which)
+    // 纯辅助技能（只回血/加盾）不经过 dealDamageToEnemy，这里统一给出身位
+    setActorAction('hero', fxPose(moveFx))
+    // 施法前摇：脚下符文魔法阵 + 冲天光柱，让"技能释放"有明确的起手
+    spawnHitFx('cast', 'hero', hero.color, 'arcane_cast')
     await sleep(150) // 让特写先入场
 
     const firePassive = supports.value.some((h) => h.passiveId === 'fireSkillUp')
@@ -875,7 +898,11 @@ export const useGameStore = defineStore('game', () => {
     if (desperate) {
       addFloat('绝境反击：全部伤害 +50%', 'info')
     }
-    if (dmg > 0) await dealDamageToEnemy(dmg, 'skill')
+    if (dmg > 0) await dealDamageToEnemy(dmg, 'skill', 'hero', moveFx)
+    else if (skill.heal || skill.shield || skill.clearDebuff) {
+      // 纯辅助技能没有命中特效这条路径，专属动画要在这里自己放（落在英雄自己身上）
+      spawnHitFx('heal', 'hero', hero.color, moveFx)
+    }
     if (skill.heal) healPlayer(skill.heal)
     if (skill.shield) gainShield(skill.shield)
     if (skill.clearDebuff && (battle.playerBurn || battle.playerPoison)) {
@@ -1036,11 +1063,14 @@ export const useGameStore = defineStore('game', () => {
           hasRelic('relic_chain_reaction')
         )
         // 龙纹暴击（V3）：每波消除 12% 概率伤害 ×1.5——随机爽感来源，技能石不暴击
+        let critted = false
         if (dmg > 0 && battle.enemy && !enemyDead(battle.enemy) && Math.random() < GEM_CRIT_CHANCE) {
           dmg = Math.round(dmg * GEM_CRIT_MULT)
           addFloat('龙纹暴击！', 'crit')
+          critted = true
         }
-        if (dmg > 0) await dealDamageToEnemy(dmg, battle.combo >= 3 ? 'crit' : 'damage')
+        // 暴击要把 kind 提上来：伤害数字走暴击样式、命中特效走交叉双斩，爽感才完整
+        if (dmg > 0) await dealDamageToEnemy(dmg, battle.combo >= 3 || critted ? 'crit' : 'damage')
       }
 
       // 被清除的特殊石触发英雄技能
@@ -1290,6 +1320,17 @@ export const useGameStore = defineStore('game', () => {
   }
 
   /**
+   * 敌人招式的展示层反馈：切身位 + 放对应的 SVG 动画。
+   * 不打伤害的招式（冻结棋盘 / 凝甲 / 蓄力起手）也必须走这里，
+   * 否则玩家只看得到飘字，读不出"敌人这回合到底做了什么"。
+   * @param self true = 特效落在怪物自己身上（增益 / 蓄力）；false = 朝英雄打出去
+   */
+  function playEnemyMove(variant: FxVariant, self = false): void {
+    setActorAction('enemy', fxPose(variant))
+    spawnHitFx(self ? 'cast' : 'skill', 'enemy', enemyColor(), variant)
+  }
+
+  /**
    * 敌人行动（REQ-ENEMY-002 / 5.4 Boss 战机制；前摇 0.5 秒预警）
    * 优先级：蓄力释放 > 行动轮换 > 旧版单技能（未配置轮换的小怪）
    * @returns 本次行动后要使用的倒计时（null = 用 baseCountdown）；蓄力时返回 window
@@ -1308,9 +1349,9 @@ export const useGameStore = defineStore('game', () => {
       addFloat(`${enemy.display} 释放「${charge.release}」！`, 'info')
       doFlash()
       doShake()
-      // 大招释放：怪物身上的蓄能爆闪 + 英雄被重击
-      spawnHitFx('cast', 'enemy', enemyColor())
-      damagePlayer(charge.damage)
+      // 大招释放：怪物脚下符文阵起手，紧接一道贯穿光束砸在英雄身上
+      spawnHitFx('cast', 'enemy', enemyColor(), 'arcane_cast')
+      damagePlayer(charge.damage, 'beam_burst')
       await sleep(200)
       return null
     }
@@ -1320,33 +1361,36 @@ export const useGameStore = defineStore('game', () => {
       const action = enemy.pattern[enemy.patternIndex % enemy.pattern.length]
       enemy.patternIndex = (enemy.patternIndex + 1) % enemy.pattern.length
       addFloat(`${enemy.display}「${action.name}」`, 'info')
+      /** 这一招对应的 SVG 动画：从注册表按行动类型取，招式与画面永远对得上 */
+      const moveFx = ENEMY_ACTION_FX[action.kind]
       let chargeWindow: number | null = null
       switch (action.kind) {
         case 'attack':
-          damagePlayer(enemy.attack)
+          damagePlayer(enemy.attack, moveFx)
           break
         case 'freezeBoard': {
           const count = applyFreezeBoard(action.size, action.turns)
           addFloat(`冻结了 ${count} 颗宝石！`, 'info')
-          if (action.damage) damagePlayer(action.damage)
+          if (action.damage) damagePlayer(action.damage, moveFx)
+          else playEnemyMove(moveFx)
           break
         }
         case 'poison':
-          damagePlayer(action.damage)
+          damagePlayer(action.damage, moveFx)
           if (battle.playerHP > 0) applyPlayerDot('poison', action.poison)
           break
         case 'burn':
-          damagePlayer(action.damage)
+          damagePlayer(action.damage, moveFx)
           if (battle.playerHP > 0) applyPlayerDot('burn', action.burn)
           break
         case 'drain':
-          damagePlayer(action.damage)
+          damagePlayer(action.damage, moveFx)
           healEnemy(action.heal)
           break
         case 'corrupt': {
           // 污染（V2）：造成伤害并把随机宝石转为敌人元素；伤害缺省取当前攻击力
           // （随变体/章节成长，避免固定值与敌人强度脱节）
-          damagePlayer(action.damage ?? enemy.attack)
+          damagePlayer(action.damage ?? enemy.attack, moveFx)
           const cfg = getEnemy(enemy.configId)
           const n = corruptBoardGems(action.count, cfg.element)
           addFloat(`${action.name}：${n} 颗宝石变为${ELEMENT_INFO[cfg.element].name}元素`, 'info')
@@ -1356,7 +1400,7 @@ export const useGameStore = defineStore('game', () => {
           // 凝甲（V2）：附加可吸收伤害的护盾，惩罚慢节奏、奖励爆发
           enemy.shield += action.amount
           addFloat(`${enemy.display} 凝甲 +${action.amount}`, 'info')
-          spawnHitFx('cast', 'enemy', enemyColor())
+          playEnemyMove(moveFx, true)
           break
         }
         case 'charge':
@@ -1370,6 +1414,8 @@ export const useGameStore = defineStore('game', () => {
           }
           chargeWindow = action.window ?? null
           addFloat(`蓄力中！累计造成 ${action.interrupt} 点伤害可打断`, 'info')
+          // 蓄力起手：脚下升起符文阵，与状态栏的蓄力条一起构成"必须打断"的压迫感
+          playEnemyMove(moveFx, true)
           doShake()
           break
       }
@@ -1383,17 +1429,18 @@ export const useGameStore = defineStore('game', () => {
         // 冰霜幽灵：冻结随机 2×2 区域（REQ-ENEMY-101）
         const count = applyFreezeBoard(enemy.skill.size, GEM_FROZEN_TURNS)
         addFloat(`${enemy.display} 冻结了 ${count} 颗宝石！`, 'info')
+        playEnemyMove(ENEMY_ACTION_FX.freezeBoard)
         break
       }
       case 'poisonAttack': {
-        damagePlayer(enemy.attack)
+        damagePlayer(enemy.attack, ENEMY_ACTION_FX.poison)
         if (battle.playerHP > 0) {
           applyPlayerDot('poison', { damage: enemy.skill.damage, turns: enemy.skill.turns })
         }
         break
       }
       default:
-        damagePlayer(enemy.attack)
+        damagePlayer(enemy.attack, ENEMY_ACTION_FX.attack)
     }
     await sleep(200)
     return null

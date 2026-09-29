@@ -7,17 +7,21 @@
  *   次要区  支援·遗物·状态徽记（左）· 敌人行动倒计时·意图/蓄力（右）—— 单行图标与文本
  *           · 行动倒计时以胶囊取代"意图"标签，与意图文案并列，归属敌方一目了然
  *   场景    双方立绘站在同一条地面线上横向相对，攻击 = 冲到对手身前
+ *           立绘朝向按 config/spriteIds.ts 的登记表修正（出图朝向不统一），保证双方对望
  * 原先铺在立绘下方的一叠信息行（名字/血条/意图/蓄力/遗物各占一行）被压进这两行，
  * 舞台高度不变的前提下，画面留给"角色与特效"的比例从约五成提升到约七成。
  *
  * 攻击交互（横板手感 = 三段式位移）：
- *   出手 后撤蓄势 → 前冲（冲程 = 两侧实测间距，见 measureLunge）→ 命中定格 → 回身
- *   受击 延迟 140ms 闪白后仰（与命中特效同拍，等出手方真的"打到"）→ 死亡倒地消散
- *   特效 斩击火花 / 技能光柱 + 冲击环 + 光刺 / 施法爆闪 / 重击冲击波（见 fx-* 样式）
+ *   出手 后撤蓄势压扁 → 前冲拉长（冲程 = 两侧实测间距，见 measureLunge）→ 命中定格 → 回身
+ *   技能 蓄力下蹲 → 浮空前倾释放 → 落地回弹（身位 act-skill，施法/远程招式专用）
+ *   受击 延迟 140ms 闪白后仰压扁（与命中特效同拍，等出手方真的"打到"）→ 死亡倒地消散
+ *   特效 每招一段独立的 SVG 动画，由 fx/BattleFx.vue 按 HitFx.variant 分派
+ *        （注册表见 config/fxVariants.ts），本文件只负责把它们摆到挨打那一侧身上
+ *   拖影 出手时身后拉出的 SVG 锥形速度线，跟着阵营色走
  *
  * 伤害数字渲染在"挨打那一方"的头顶（FloatText.side 由 store 给出），
  * 不再按屏幕百分比定位 —— 宽屏双栏与竖屏单列的版式差异都不会让数字飘错位置。
- * 角色形象仍是 public/sprites/ 下的 640px 透明立绘，由 idle/attack/hurt/dead 四态驱动。
+ * 角色形象仍是 public/sprites/ 下的 640px 透明立绘，由 idle/attack/skill/hurt/dead 五态驱动。
  */
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useGameStore } from '@/stores/game'
@@ -30,7 +34,9 @@ import {
 } from '@/config/constants'
 import { iconUrl } from '@/utils/icons'
 import { spriteUrl } from '@/utils/sprites'
-import type { FloatText, HeroConfig } from '@/types'
+import { spriteFlipped } from '@/config/spriteIds'
+import BattleFx from '@/components/fx/BattleFx.vue'
+import type { ActorAction, FloatText, HeroConfig } from '@/types'
 
 const store = useGameStore()
 const battle = store.battle
@@ -42,6 +48,13 @@ const isBoss = computed(() => !!enemy.value && enemy.value.phaseHP.length > 1)
 
 /** V2 敌人属性（元素 / 弱点 / 抗性 / 护甲），驱动场景顶部的属性徽记条 */
 const enemyAttrs = computed(() => store.enemyAttributes)
+
+/**
+ * 立绘朝向修正：美术出图朝向不统一（史莱姆/幼龙/远古巨龙朝右、冰霜女巫朝左），
+ * 而横板对望要求英雄朝右、怪物朝左，朝向不符的立绘水平镜像过来。
+ */
+const heroFlipped = computed(() => spriteFlipped(leader.value.spriteId, 'hero'))
+const enemyFlipped = computed(() => (enemy.value ? spriteFlipped(enemy.value.spriteId, 'enemy') : false))
 
 /** 弱点倍率（弱点猎手遗物提升为 1.8） */
 const weakMult = computed(() =>
@@ -218,6 +231,31 @@ function fxLandsOnHero(f: { kind: string; side: 'hero' | 'enemy' }): boolean {
 const fxOnHero = computed(() => store.hitFxs.filter(fxLandsOnHero))
 const fxOnEnemy = computed(() => store.hitFxs.filter((f) => !fxLandsOnHero(f)))
 
+/** 出手类身位（普通前冲 / 技能释放）：都要拉拖影，也都要在新命中时重播 */
+function isMovePose(a: ActorAction): boolean {
+  return a === 'attack' || a === 'skill'
+}
+const heroLunge = computed(() => isMovePose(battle.heroAction))
+const enemyLunge = computed(() => isMovePose(battle.enemyAction))
+
+/**
+ * 前冲拖影：身后拉出的锥形速度线。
+ * 形状是"靠角色一端粗、尾端收成尖"的柳叶形，画在 120×100 的 viewBox 里，
+ * 由 preserveAspectRatio="none" 拉满整块拖影区；敌方一侧靠 CSS scaleX(-1) 镜像。
+ */
+const SPEED_LINES = [
+  { y: 20, len: 74, w: 5, t: 0 },
+  { y: 38, len: 104, w: 7.5, t: 0.03 },
+  { y: 56, len: 88, w: 6, t: 0.06 },
+  { y: 72, len: 112, w: 8.5, t: 0.02 },
+  { y: 88, len: 68, w: 4.5, t: 0.07 }
+].map((l) => ({
+  t: l.t,
+  d:
+    `M${120 - l.len} ${l.y} Q${120 - l.len * 0.42} ${l.y - l.w * 0.6} 120 ${l.y - l.w / 2}` +
+    ` L120 ${l.y + l.w / 2} Q${120 - l.len * 0.42} ${l.y + l.w * 0.6} ${120 - l.len} ${l.y} Z`
+}))
+
 /** 飘字横向错位：同回合多条飘字（连击/状态叠加）不叠在同一像素上 */
 function jitterOf(id: number): string {
   return `${((id * 37) % 25) - 12}px`
@@ -302,10 +340,10 @@ watch(
     const fx = store.hitFxs.find((f) => f.id === id)
     if (!fx || fx.kind === 'heal' || fx.kind === 'cast') return
     if (fx.side === 'hero') {
-      if (battle.heroAction === 'attack') restartAction(heroSprite.value)
+      if (isMovePose(battle.heroAction)) restartAction(heroSprite.value)
       if (battle.enemyAction === 'hurt') restartAction(enemySprite.value)
     } else {
-      if (battle.enemyAction === 'attack') restartAction(enemySprite.value)
+      if (isMovePose(battle.enemyAction)) restartAction(enemySprite.value)
       if (battle.heroAction === 'hurt') restartAction(heroSprite.value)
     }
   },
@@ -467,22 +505,25 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
         <img
           ref="heroSprite"
           class="sprite"
-          :class="`act-${battle.heroAction}`"
+          :class="[`act-${battle.heroAction}`, { 'sprite-flip': heroFlipped }]"
           :src="spriteUrl(leader.spriteId)"
           :alt="leader.name"
           draggable="false"
           @load="measureLunge"
         />
-        <!-- 前冲拖影：出手时在身后拉出一道同色残影 -->
-        <div v-if="battle.heroAction === 'attack'" class="trail" aria-hidden="true"></div>
-        <div
-          v-for="fx in fxOnHero"
-          :key="fx.id"
-          class="hit-fx"
-          :class="`fx-${fx.kind}`"
-          :style="{ '--fx': fx.color }"
-          aria-hidden="true"
-        ></div>
+        <!-- 前冲拖影：出手时在身后拉出一把锥形速度线 -->
+        <svg v-if="heroLunge" class="trail" viewBox="0 0 120 100" preserveAspectRatio="none" aria-hidden="true">
+          <path
+            v-for="(l, i) in SPEED_LINES"
+            :key="i"
+            class="tr-line"
+            :style="{ '--t': `${l.t}s` }"
+            :d="l.d"
+            fill="currentColor"
+          />
+        </svg>
+        <!-- 招式动画：每招一段独立 SVG，落点就是这一侧的角色 -->
+        <BattleFx v-for="fx in fxOnHero" :key="fx.id" :fx="fx" />
         <div class="dmg-layer" aria-hidden="true">
           <span
             v-for="ft in floatsOnHero"
@@ -508,21 +549,26 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
         <img
           ref="enemySprite"
           class="sprite"
-          :class="[`act-${battle.enemyAction}`, { 'sprite-frozen': enemy.frozen > 0 }]"
+          :class="[
+            `act-${battle.enemyAction}`,
+            { 'sprite-frozen': enemy.frozen > 0, 'sprite-flip': enemyFlipped }
+          ]"
           :src="spriteUrl(enemy.spriteId)"
           :alt="enemy.display"
           draggable="false"
           @load="measureLunge"
         />
-        <div v-if="battle.enemyAction === 'attack'" class="trail" aria-hidden="true"></div>
-        <div
-          v-for="fx in fxOnEnemy"
-          :key="fx.id"
-          class="hit-fx"
-          :class="`fx-${fx.kind}`"
-          :style="{ '--fx': fx.color }"
-          aria-hidden="true"
-        ></div>
+        <svg v-if="enemyLunge" class="trail" viewBox="0 0 120 100" preserveAspectRatio="none" aria-hidden="true">
+          <path
+            v-for="(l, i) in SPEED_LINES"
+            :key="i"
+            class="tr-line"
+            :style="{ '--t': `${l.t}s` }"
+            :d="l.d"
+            fill="currentColor"
+          />
+        </svg>
+        <BattleFx v-for="fx in fxOnEnemy" :key="fx.id" :fx="fx" />
         <div class="dmg-layer" aria-hidden="true">
           <span
             v-for="ft in floatsOnEnemy"
@@ -1076,39 +1122,47 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   user-select: none;
   filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.7));
   transform-origin: 50% 92%;
-  will-change: translate, filter;
+  will-change: translate, rotate, scale, filter;
   z-index: 2;
 }
 
-/* 前冲拖影：出手瞬间在身后拉出的一道阵营色残影 */
-.trail {
-  position: absolute;
-  top: 18%;
-  bottom: 6%;
-  width: 160%;
-  z-index: 1;
-  pointer-events: none;
-  animation: dash-trail 0.32s ease-out;
-}
-.side-hero .trail {
-  right: 44%;
-  background: linear-gradient(270deg, color-mix(in srgb, var(--actor) 60%, transparent), transparent 78%);
-  -webkit-mask: linear-gradient(180deg, transparent, #000 32%, #000 78%, transparent);
-  mask: linear-gradient(180deg, transparent, #000 32%, #000 78%, transparent);
-}
-.side-enemy .trail {
-  left: 44%;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--actor) 60%, transparent), transparent 78%);
-  -webkit-mask: linear-gradient(180deg, transparent, #000 32%, #000 78%, transparent);
-  mask: linear-gradient(180deg, transparent, #000 32%, #000 78%, transparent);
-}
-@keyframes dash-trail {
-  0% { opacity: 0; translate: calc(var(--dir) * 12px) 0; scale: 0.6 1; }
-  25% { opacity: 0.9; }
-  100% { opacity: 0; translate: calc(var(--dir) * -26px) 0; scale: 1.3 1; }
+/*
+ * 立绘朝向修正：美术出图朝向不统一，横板对望要求英雄朝右、怪物朝左（见 spriteFlipped）。
+ * 镜像放在 transform 上：位移走 translate 个体属性、在父坐标里生效，不会被镜像反号；
+ * 但 rotate 会被镜像反号，所以动作关键帧里的 rotate 一律乘 --flip 补偿回原来的视觉方向。
+ */
+.sprite-flip {
+  transform: scaleX(-1);
+  --flip: -1;
 }
 
-/* ---------- 角色四态动画 ---------- */
+/* 前冲拖影：出手瞬间在身后拉出的一把锥形速度线（吃阵营色） */
+.trail {
+  position: absolute;
+  top: 14%;
+  bottom: 8%;
+  width: 150%;
+  z-index: 1;
+  pointer-events: none;
+  overflow: visible;
+  color: var(--actor);
+  filter: drop-shadow(0 0 6px currentColor);
+}
+/* 粗端贴着角色、尖端甩向身后；敌方一侧整体镜像即可复用同一组路径 */
+.side-hero .trail { right: 46%; }
+.side-enemy .trail { left: 46%; transform: scaleX(-1); }
+.tr-line {
+  transform-box: fill-box;
+  transform-origin: 100% 50%;
+  animation: streak-out 0.34s cubic-bezier(0.2, 0.8, 0.3, 1) var(--t, 0s) both;
+}
+@keyframes streak-out {
+  0% { opacity: 0; transform: scaleX(0.14); }
+  22% { opacity: 0.9; }
+  100% { opacity: 0; transform: scaleX(1.22); }
+}
+
+/* ---------- 角色五态动画 ---------- */
 /* 待机：轻微上下呼吸，让画面"活着" */
 .act-idle { animation: actor-idle 2.8s ease-in-out infinite; }
 @keyframes actor-idle {
@@ -1117,40 +1171,76 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
 }
 
 /*
- * 出手：横板三段式前冲 —— 后撤蓄势 → 冲到对手身前 → 命中定格 → 回身。
+ * 出手：横板三段式前冲 + 挤压拉伸 —— 后撤蓄势压扁 → 前冲拉长 → 命中定格撞回 → 回身。
  * 冲程由 --lunge 决定（脚本按两侧实测间距写入），因此不论立绘多宽、
  * 屏幕多窄，出手方一定"打得到"对面，而不是在原地做一个挥拳动作。
+ * 命中定格必须落在 34%：--fx-delay(0.14s) 就是按这个节拍校准的。
  */
 .act-attack { animation: actor-attack 0.46s cubic-bezier(0.34, 0.9, 0.3, 1); }
 @keyframes actor-attack {
-  0% { translate: 0 0; rotate: 0deg; scale: 1; }
-  15% { translate: calc(var(--dir) * -8px) 0; rotate: calc(var(--dir) * -3deg); scale: 0.985; }
-  34% { translate: calc(var(--dir) * var(--lunge)) -6px; rotate: calc(var(--dir) * 6deg); scale: 1.05; }
-  50% { translate: calc(var(--dir) * var(--lunge)) -4px; rotate: calc(var(--dir) * 5deg); scale: 1.03; }
-  72% { translate: calc(var(--dir) * var(--lunge) * 0.18) 0; rotate: calc(var(--dir) * 1deg); }
-  100% { translate: 0 0; rotate: 0deg; scale: 1; }
+  0% { translate: 0 0; rotate: 0deg; scale: 1 1; }
+  15% { translate: calc(var(--dir) * -9px) 2px; rotate: calc(var(--dir) * var(--flip, 1) * -4deg); scale: 1.08 0.89; }
+  26% { translate: calc(var(--dir) * var(--lunge) * 0.62) -7px; rotate: calc(var(--dir) * var(--flip, 1) * 3deg); scale: 0.92 1.11; }
+  34% { translate: calc(var(--dir) * var(--lunge)) -3px; rotate: calc(var(--dir) * var(--flip, 1) * 7deg); scale: 1.15 0.89; }
+  50% { translate: calc(var(--dir) * var(--lunge)) -5px; rotate: calc(var(--dir) * var(--flip, 1) * 5deg); scale: 1.01 1.04; }
+  72% { translate: calc(var(--dir) * var(--lunge) * 0.18) 0; rotate: calc(var(--dir) * var(--flip, 1) * 1deg); scale: 1 1; }
+  88% { translate: 0 1px; scale: 1.04 0.96; }
+  100% { translate: 0 0; rotate: 0deg; scale: 1 1; }
 }
 
-/* 受击：延迟 0.14s 起跳（等出手方打到身上），向后击退 + 闪白 */
+/*
+ * 技能释放：施法/远程招式专用身位（fxPose 判定，见 config/fxVariants.ts）。
+ * 不做贴身冲刺 —— 蓄力下蹲压扁 → 浮空前倾拉长并亮起阵营色辉光 → 落地回弹，
+ * 与脚下升起的符文魔法阵（arcane_cast）合成一次完整的"起手—释放"。
+ */
+.act-skill { animation: actor-skill 0.64s cubic-bezier(0.28, 0.9, 0.3, 1); }
+@keyframes actor-skill {
+  0% { translate: 0 0; rotate: 0deg; scale: 1 1; }
+  16% {
+    translate: 0 7px;
+    rotate: calc(var(--dir) * var(--flip, 1) * -3deg);
+    scale: 1.11 0.87;
+    filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.7))
+      drop-shadow(0 0 10px color-mix(in srgb, var(--actor) 75%, transparent));
+  }
+  38% {
+    translate: calc(var(--dir) * 10px) -20px;
+    rotate: calc(var(--dir) * var(--flip, 1) * 6deg);
+    scale: 0.92 1.13;
+    filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.7))
+      drop-shadow(0 0 22px color-mix(in srgb, var(--actor) 95%, transparent));
+  }
+  54% {
+    translate: calc(var(--dir) * 6px) -14px;
+    rotate: calc(var(--dir) * var(--flip, 1) * 4deg);
+    scale: 1 1.05;
+  }
+  76% { translate: 0 3px; rotate: 0deg; scale: 1.07 0.93; }
+  90% { translate: 0 -1px; scale: 0.99 1.02; }
+  100% { translate: 0 0; rotate: 0deg; scale: 1 1; }
+}
+
+/* 受击：延迟 0.14s 起跳（等出手方打到身上），向后击退 + 压扁 + 闪白 */
 .act-hurt { animation: actor-hurt 0.34s ease-out 0.14s; }
 @keyframes actor-hurt {
-  0% { translate: 0 0; filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.7)); }
+  0% { translate: 0 0; scale: 1 1; filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.7)); }
   22% {
-    translate: calc(var(--knock) * 12px) 2px;
+    translate: calc(var(--knock) * 13px) 2px;
+    scale: 1.1 0.89;
     filter: brightness(2.4) saturate(0.3) drop-shadow(0 0 12px rgba(255, 255, 255, 0.95));
   }
-  55% { translate: calc(var(--knock) * 3px) 0; }
-  100% { translate: 0 0; filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.7)); }
+  55% { translate: calc(var(--knock) * 3px) 0; scale: 0.97 1.04; }
+  100% { translate: 0 0; scale: 1 1; filter: drop-shadow(0 5px 10px rgba(0, 0, 0, 0.7)); }
 }
 
 /* 死亡：倒地 + 灰化 + 淡出（保持终态，由开局/换波重置） */
 .act-dead { animation: actor-dead 1.45s cubic-bezier(0.4, 0, 0.6, 1) 0.1s forwards; }
 @keyframes actor-dead {
   0% { translate: 0 0; rotate: 0deg; opacity: 1; }
-  22% { translate: calc(var(--knock) * 7px) 0; rotate: calc(var(--knock) * 4deg); }
+  22% { translate: calc(var(--knock) * 7px) 0; rotate: calc(var(--knock) * var(--flip, 1) * 4deg); }
   100% {
     translate: calc(var(--knock) * 16px) 12px;
-    rotate: calc(var(--knock) * -74deg);
+    rotate: calc(var(--knock) * var(--flip, 1) * -74deg);
     filter: grayscale(1) brightness(0.4) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6));
     opacity: 0.2;
   }
@@ -1175,186 +1265,6 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
 @keyframes charge-aura {
   0%, 100% { opacity: 0.35; scale: 1; }
   50% { opacity: 0.95; scale: 1.06; }
-}
-
-/* ============================================================
- * 命中特效：所有特效延迟 --fx-delay（≈ 出手方冲到人前的时间点）
- * ============================================================ */
-.hit-fx {
-  position: absolute;
-  pointer-events: none;
-  z-index: 4;
-}
-
-/* 普攻斩击：斜向白光扫过 + 命中火花四溅 */
-.fx-slash {
-  inset: -10% -14%;
-  background: linear-gradient(112deg, transparent 41%, #fff 50%, transparent 59%);
-  mix-blend-mode: screen;
-  animation: fx-slash 0.42s ease-out var(--fx-delay) forwards;
-}
-.fx-slash::after {
-  content: '';
-  position: absolute;
-  left: 48%;
-  top: 44%;
-  width: 46%;
-  aspect-ratio: 1;
-  translate: -50% -50%;
-  background: repeating-conic-gradient(from 6deg, rgba(255, 255, 255, 0.95) 0 3deg, transparent 3deg 26deg);
-  -webkit-mask: radial-gradient(circle, transparent 30%, #000 36%, #000 54%, transparent 64%);
-  mask: radial-gradient(circle, transparent 30%, #000 36%, #000 54%, transparent 64%);
-  opacity: 0;
-  animation: fx-spark 0.4s ease-out calc(var(--fx-delay) + 0.04s) forwards;
-}
-@keyframes fx-slash {
-  0% { opacity: 0; transform: translateX(-40%) scaleY(0.5); }
-  24% { opacity: 1; }
-  100% { opacity: 0; transform: translateX(40%) scaleY(1.4); }
-}
-@keyframes fx-spark {
-  0% { opacity: 0; scale: 0.4; rotate: -14deg; }
-  30% { opacity: 1; }
-  100% { opacity: 0; scale: 1.5; rotate: 8deg; }
-}
-
-/* 技能：贯穿光柱 + 落点冲击环 + 光刺爆发（三层叠加 = 一次技能该有的体量） */
-.fx-skill {
-  left: 50%;
-  top: -40%;
-  width: 54%;
-  height: 175%;
-  transform: translateX(-50%);
-  background: linear-gradient(180deg, transparent, var(--fx) 26%, #fff 50%, var(--fx) 72%, transparent);
-  filter: blur(3px);
-  animation: fx-skill 0.5s ease-out var(--fx-delay) forwards;
-}
-.fx-skill::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 5%;
-  width: 92%;
-  aspect-ratio: 1;
-  translate: -50% 0;
-  border-radius: 50%;
-  border: 3px solid var(--fx);
-  box-shadow: 0 0 22px var(--fx), inset 0 0 14px var(--fx);
-  opacity: 0;
-  animation: fx-ring 0.5s ease-out calc(var(--fx-delay) + 0.06s) forwards;
-}
-.fx-skill::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 40%;
-  width: 132%;
-  aspect-ratio: 1;
-  translate: -50% -50%;
-  background: repeating-conic-gradient(from 10deg, var(--fx) 0 2.5deg, transparent 2.5deg 22deg);
-  -webkit-mask: radial-gradient(circle, transparent 24%, #000 32%, #000 56%, transparent 66%);
-  mask: radial-gradient(circle, transparent 24%, #000 32%, #000 56%, transparent 66%);
-  opacity: 0;
-  animation: fx-spark 0.52s ease-out calc(var(--fx-delay) + 0.06s) forwards;
-}
-@keyframes fx-skill {
-  0% { opacity: 0; scale: 1 0.3; }
-  30% { opacity: 1; scale: 1 1; }
-  100% { opacity: 0; scale: 1.4 1; }
-}
-@keyframes fx-ring {
-  0% { opacity: 0.9; scale: 0.3; }
-  100% { opacity: 0; scale: 2.6; }
-}
-
-/* 重击爆点（怪物普攻）：扩散冲击波 + 中心白闪 */
-.fx-impact {
-  left: 50%;
-  top: 50%;
-  width: 26%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  border: 3px solid var(--fx);
-  transform: translate(-50%, -50%);
-  box-shadow: 0 0 22px var(--fx), inset 0 0 14px var(--fx);
-  animation: fx-impact 0.46s ease-out var(--fx-delay) forwards;
-}
-.fx-impact::after {
-  content: '';
-  position: absolute;
-  inset: 24%;
-  border-radius: 50%;
-  background: radial-gradient(circle, #fff 0 30%, color-mix(in srgb, var(--fx) 80%, transparent) 60%, transparent 72%);
-  animation: fx-flash 0.3s ease-out var(--fx-delay) forwards;
-}
-@keyframes fx-impact {
-  0% { scale: 0.25; opacity: 1; }
-  100% { scale: 4; opacity: 0; }
-}
-@keyframes fx-flash {
-  0% { opacity: 0; scale: 0.4; }
-  30% { opacity: 1; }
-  100% { opacity: 0; scale: 1.4; }
-}
-
-/* 治疗：脚下升起的柔和辉光 */
-.fx-heal {
-  inset: -8%;
-  background: radial-gradient(circle at 50% 78%, color-mix(in srgb, var(--fx) 70%, transparent), transparent 62%);
-  animation: fx-heal 0.5s ease-out var(--fx-delay) forwards;
-}
-@keyframes fx-heal {
-  0% { opacity: 0; scale: 0.72; }
-  38% { opacity: 1; }
-  100% { opacity: 0; scale: 1.12; translate: 0 -16px; }
-}
-
-/* 施法蓄能（技能/大招前摇）：出手方身上的爆闪 + 扩散环 + 冲天光柱，无延迟 */
-.fx-cast {
-  inset: -14% -18%;
-  background: radial-gradient(
-    circle at 50% 52%,
-    #fff 0 6%,
-    color-mix(in srgb, var(--fx) 85%, transparent) 24%,
-    transparent 62%
-  );
-  animation: fx-cast 0.44s ease-out forwards;
-}
-.fx-cast::before {
-  content: '';
-  position: absolute;
-  left: 50%;
-  top: 52%;
-  width: 40%;
-  aspect-ratio: 1;
-  translate: -50% -50%;
-  border-radius: 50%;
-  border: 2px solid var(--fx);
-  box-shadow: 0 0 18px var(--fx);
-  animation: fx-ring 0.5s ease-out forwards;
-}
-.fx-cast::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  bottom: 12%;
-  width: 26%;
-  height: 96%;
-  translate: -50% 0;
-  background: linear-gradient(0deg, color-mix(in srgb, var(--fx) 70%, transparent), transparent 78%);
-  filter: blur(2px);
-  transform-origin: 50% 100%;
-  animation: fx-cast-pillar 0.5s ease-out forwards;
-}
-@keyframes fx-cast {
-  0% { opacity: 0; scale: 0.6; }
-  20% { opacity: 1; scale: 1.12; }
-  100% { opacity: 0; scale: 1.25; }
-}
-@keyframes fx-cast-pillar {
-  0% { opacity: 0; scale: 1 0.2; }
-  30% { opacity: 0.95; }
-  100% { opacity: 0; scale: 1 1.25; }
 }
 
 /* ============================================================

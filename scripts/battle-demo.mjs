@@ -205,8 +205,8 @@ try {
             if (!slot || !img) return null
             return +(img.getBoundingClientRect().left - slot.getBoundingClientRect().left).toFixed(1)
           })(),
-          fx: document.querySelectorAll('.hit-fx').length,
-          fxKinds: [...document.querySelectorAll('.hit-fx')].map(e=>e.className.replace('hit-fx fx-','')).join(','),
+          fx: document.querySelectorAll('.fx-svg').length,
+          fxKinds: [...document.querySelectorAll('.fx-svg')].map(e=>e.dataset.fx).join(','),
           floats: [...document.querySelectorAll('.dmg')].map(e=>e.textContent.trim()).slice(0,4),
           enemyHp: document.querySelector('.plate-enemy .p-fill')?.style.width,
           enemyGhost: document.querySelector('.plate-enemy .p-ghost')?.style.width,
