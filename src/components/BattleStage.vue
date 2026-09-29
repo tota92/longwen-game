@@ -529,7 +529,8 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   display: flex;
   flex-direction: column;
   gap: 3px;
-  height: clamp(132px, 22dvh, 196px);
+  /* 战斗舞台是全局视觉焦点：竖屏占比提升（22→26dvh），不再被信息区抢风头 */
+  height: clamp(152px, 26dvh, 236px);
   padding: 5px var(--sp-3) 6px;
   margin: 0 var(--sp-4);
   overflow: hidden;
@@ -538,17 +539,23 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
   /* 地面高度：角色站立基准线，场景内的百分比与发光都以它为准 */
   --ground-h: 22px;
   background:
-    radial-gradient(ellipse at 16% 0%, rgba(60, 167, 255, 0.1), transparent 55%),
-    radial-gradient(ellipse at 84% 0%, rgba(255, 90, 60, 0.1), transparent 55%),
+    /* 顶部居中金色天光 + 两侧阵营辉光，让舞台一眼成为焦点区域 */
+    radial-gradient(130% 120% at 50% 0%, rgba(212, 175, 55, 0.16), transparent 44%),
+    radial-gradient(ellipse at 16% 0%, rgba(60, 167, 255, 0.12), transparent 55%),
+    radial-gradient(ellipse at 84% 0%, rgba(255, 90, 60, 0.12), transparent 55%),
     var(--bg-panel);
+  /* 高一层悬浮感 + 金色光晕，与信息区保持清晰距离 */
+  box-shadow: var(--shadow-panel), 0 0 22px rgba(212, 175, 55, 0.16);
 }
-/* 顶部一道金线：与棋盘共用同一套"魔幻纹章"语言 */
+/* 顶部一道金线：加粗加亮，作为舞台与上方顶栏的分界 */
 .battle-stage::before {
   content: '';
   position: absolute;
   inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(90deg, rgba(120, 190, 255, 0.55), rgba(212, 175, 55, 0.7), rgba(255, 90, 60, 0.55));
+  height: 3px;
+  background: linear-gradient(90deg, rgba(120, 190, 255, 0.6), rgba(240, 216, 120, 0.9), rgba(255, 90, 60, 0.6));
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.45);
+  z-index: 6;
 }
 
 /* ---------- HUD 行 ---------- */
@@ -1364,7 +1371,8 @@ const floatClass = (ft: FloatText): string => `dmg-${ft.kind}`
  * ============================================================ */
 @media (min-width: 860px) {
   .battle-stage {
-    height: clamp(190px, 26dvh, 260px);
+    /* 宽屏舞台是主视觉：31dvh，让角色与招式有充分施展的舞台 */
+    height: clamp(224px, 31dvh, 318px);
     padding: 6px var(--sp-4) 8px;
     --ground-h: 30px;
   }

@@ -232,8 +232,9 @@ function openDetail(s: SkillView): void {
 }
 .hero-chip {
   position: relative;
-  width: 26px;
-  height: 26px;
+  /* 竖屏底部信息区被压缩后，这里收成 22px 圆钮以适配更矮的面板 */
+  width: 22px;
+  height: 22px;
   padding: 0;
   border-radius: 50%;
   border: 1.5px solid rgba(255, 255, 255, 0.14);

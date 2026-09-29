@@ -183,10 +183,10 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
   padding-bottom: env(safe-area-inset-bottom);
   /* 面板与棋盘之间的呼吸由 gap 统一控制，避免各处 margin 叠加出垂直死角 */
   gap: var(--sp-3);
-  /* 128px = Tab 栏 25 + 技能页内容 86（3 个英雄切换钮纵排是最高的）+ 内边距与间距 17。
-     这是技能页不被裁切的下限，两页取同一值，切 Tab 时棋盘尺寸才不会变。
-     矮屏实测只差 3px 棋盘，不值得为它牺牲技能页完整性。 */
-  --bottom-total: 128px;
+  /* 116px = Tab 栏 25 + 技能页内容 72（3 个英雄切换钮 22px 纵排 + 间距）+ 内边距与间距 19。
+     技能页按收纳进 22px 圆钮后不再裁切；两页取同一值，切 Tab 时棋盘尺寸不变。
+     更矮的底部信息区把竖向空间让给战斗舞台（核心交互），宝石/技能退居辅助位。 */
+  --bottom-total: 116px;
 }
 
 .battle-top {
@@ -425,13 +425,13 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
 @media (min-width: 860px) {
   .battle-view {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) clamp(340px, 30vw, 420px);
+    grid-template-columns: minmax(0, 1fr) clamp(292px, 24vw, 372px);
     grid-template-rows: auto auto minmax(0, 1fr);
     grid-template-areas:
       'top    top'
       'stage  side'
       'board  side';
-    gap: var(--sp-4) var(--sp-6);
+    gap: var(--sp-4) var(--sp-5);
     padding: var(--sp-4) var(--sp-6);
     max-width: 1180px;
     margin: 0 auto;
@@ -454,25 +454,29 @@ onBeforeUnmount(() => mq?.removeEventListener('change', onMqChange))
     grid-area: side;
     display: flex;
     flex-direction: column;
-    gap: var(--sp-4);
+    gap: var(--sp-3);
     min-height: 0;
     overflow-y: auto;
   }
   .side-block {
-    padding: var(--sp-3) var(--sp-4) var(--sp-4);
+    /* 信息区刻意低于战场一层：更透更暗、弱化边框，让战斗舞台成为唯一焦点 */
+    padding: var(--sp-2) var(--sp-3) var(--sp-3);
     display: flex;
     flex-direction: column;
-    gap: var(--sp-3);
+    gap: var(--sp-2);
     flex-shrink: 0;
+    background: rgba(255, 255, 255, 0.038);
+    border-color: rgba(212, 175, 55, 0.18);
   }
   .block-title {
     margin: 0;
-    font-size: 13px;
-    color: var(--gold-light);
-    letter-spacing: 3px;
-    padding-left: 8px;
+    font-size: 11px;
+    color: var(--text-3);
+    letter-spacing: 2px;
+    padding-left: 7px;
     border-left: 2px solid var(--gold);
     line-height: 1.2;
+    opacity: 0.85;
   }
 }
 </style>
