@@ -97,6 +97,9 @@ try {
     }
     out.app = box('.app-root')
     out.stage = box('.battle-stage')
+    out.stageHud = box('.hud-row')
+    out.stageMeta = box('.meta-row')
+    out.stageScene = box('.scene')
     out.boardWrap = box('.board-wrap')
     out.board = box('.board')
     out.gem0 = box('.board .gem')
@@ -110,15 +113,17 @@ try {
     out.bodyScrollW = document.body.scrollWidth
     out.heroSide = box('.side-hero')
     out.enemySide = box('.side-enemy')
-    out.heroSpriteBox = box('.side-hero .sprite-box')
-    out.enemySpriteBox = box('.side-enemy .sprite-box')
     out.heroSprite = box('.side-hero .sprite')
     out.enemySprite = box('.side-enemy .sprite')
-    out.heroName = box('.side-hero .name-row')
-    out.enemyName = box('.side-enemy .name-row')
-    out.heroHp = box('.side-hero .hp-bar')
-    out.enemyHp = box('.side-enemy .hp-bar')
-    out.centerCol = box('.center-col')
+    out.heroPlate = box('.plate-hero')
+    out.enemyPlate = box('.plate-enemy')
+    out.heroHp = box('.plate-hero .p-bar')
+    out.enemyHp = box('.plate-enemy .p-bar')
+    out.timerWrap = box('.timer-wrap')
+    out.lunge = {
+      hero: getComputedStyle(document.querySelector('.battle-stage')).getPropertyValue('--lunge-hero').trim(),
+      enemy: getComputedStyle(document.querySelector('.battle-stage')).getPropertyValue('--lunge-enemy').trim()
+    }
     out.skillPanel = box('.skill-panel')
     out.heroSwitch = box('.hero-switch')
     out.heroChip0 = box('.hero-chip')

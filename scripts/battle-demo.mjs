@@ -169,8 +169,8 @@ try {
   const before = JSON.parse(
     await evaluate(`JSON.stringify({
       turn: document.querySelector('.turn-text')?.textContent?.trim(),
-      enemyHp: document.querySelector('.side-enemy .hp-fill')?.style.width,
-      heroHp: document.querySelector('.side-hero .hp-fill')?.style.width
+      enemyHp: document.querySelector('.plate-enemy .p-fill')?.style.width,
+      heroHp: document.querySelector('.plate-hero .p-fill')?.style.width
     })`)
   )
   console.log('交换前:', JSON.stringify(before))
@@ -185,24 +185,37 @@ try {
   // ---- 4. 动画窗口内取样 ----
   const frames = []
   let captured = false
-  for (let i = 0; i < 14; i++) {
-    await delay(90)
+  for (let i = 0; i < 22; i++) {
+    // 强制来一帧合成：无头窗口在"没人看图"时可能不推进 CSS 动画，
+    // 抓一帧截图（丢弃）即可让动画时间线继续走，采样才落得到前冲窗口里
+    await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+    await delay(50)
     const f = JSON.parse(
       await evaluate(`JSON.stringify({
-          t: ${i * 90},
+          t: ${i * 50},
           hero: document.querySelector('.side-hero .sprite')?.className.replace(/sprite|act-/g,'').trim(),
           enemy: document.querySelector('.side-enemy .sprite')?.className.replace(/sprite|act-/g,'').trim(),
+          heroAnim: (() => {
+            const a = document.querySelector('.side-hero .sprite')?.getAnimations()[0]
+            return a ? (a.currentTime === null ? 'pending' : Math.round(a.currentTime)) : 'none'
+          })(),
+          heroShift: (() => {
+            const slot = document.querySelector('.side-hero')
+            const img = slot?.querySelector('.sprite')
+            if (!slot || !img) return null
+            return +(img.getBoundingClientRect().left - slot.getBoundingClientRect().left).toFixed(1)
+          })(),
           fx: document.querySelectorAll('.hit-fx').length,
           fxKinds: [...document.querySelectorAll('.hit-fx')].map(e=>e.className.replace('hit-fx fx-','')).join(','),
-          floats: [...document.querySelectorAll('.float-layer *')].map(e=>e.textContent.trim()).filter(Boolean).slice(0,4),
-          enemyHp: document.querySelector('.side-enemy .hp-fill')?.style.width,
-          enemyGhost: document.querySelector('.side-enemy .hp-ghost')?.style.width,
+          floats: [...document.querySelectorAll('.dmg')].map(e=>e.textContent.trim()).slice(0,4),
+          enemyHp: document.querySelector('.plate-enemy .p-fill')?.style.width,
+          enemyGhost: document.querySelector('.plate-enemy .p-ghost')?.style.width,
           combo: document.querySelector('.combo-display')?.textContent?.trim() || null
         })`)
     )
     frames.push(f)
     // 抓一帧动画进行中的画面，用来肉眼核对特效/飘字/姿态
-    if (!captured && f.hero === 'attack') {
+    if (!captured && f.heroShift !== null && f.heroShift > 20) {
       await shot('battle_impact')
       captured = true
     }
@@ -212,7 +225,7 @@ try {
   for (const f of frames) {
     console.log(
       `  +${String(f.t).padStart(4)}ms  hero=${String(f.hero).padEnd(6)} enemy=${String(f.enemy).padEnd(6)}` +
-        ` fx=${f.fx} hp=${String(f.enemyHp).padEnd(7)} ghost=${String(f.enemyGhost).padEnd(7)}` +
+        ` 前冲=${String(f.heroShift).padStart(6)}px anim=${String(f.heroAnim).padStart(6)}ms fx=${f.fx} hp=${String(f.enemyHp).padEnd(7)}` +
         ` floats=${f.floats.join(',')} combo=${f.combo ?? ''}`
     )
   }
@@ -220,7 +233,10 @@ try {
   await shot('battle_after_swap')
   const changed = frames.some((f) => f.hero === 'attack' || f.enemy === 'hurt' || f.enemy === 'attack')
   const hpChanged = frames.some((f) => f.enemyHp !== before.enemyHp)
+  // 横板前冲：出手瞬间立绘必须真的沿横轴向前位移（而不只是原地播动画）
+  const moved = frames.some((f) => f.heroShift !== null && f.heroShift > 4)
   console.log(`\n角色动作切换: ${changed ? '✅' : '❌'}   血条变化: ${hpChanged ? '✅' : '❌'}`)
+  console.log(`前冲位移: ${moved ? '✅' : '❌'}`)
   console.log(`飘字出现: ${frames.some((f) => f.floats.length) ? '✅' : '❌'}`)
 } finally {
   try {

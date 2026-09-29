@@ -244,6 +244,17 @@ async function runTest() {
   await import(`file://${file.replace(/\\/g, '/')}`)
 }
 
+/**
+ * 全局样式表（设计令牌 / 基础布局 / 组件类 / 特效 / 横屏守卫）
+ *
+ * 正式入口 src/main.ts 会逐个 import 它们；预览入口 preview-entry.ts 不走 main.ts，
+ * 而本构建通道只收集 SFC `<style>` 产出的 CSS，因此必须在此显式前置，
+ * 否则 var(--sp-*) / var(--bg-panel) 全部落空，预览页会退化成"没有设计令牌"的伪布局。
+ */
+const GLOBAL_CSS = ['tokens.css', 'base.css', 'components.css', 'effects.css', 'guards.css']
+  .map((file) => fs.readFileSync(path.join(ROOT, 'src/assets/style', file), 'utf8'))
+  .join('\n')
+
 // ------------------------------------------------------------------
 // --preview：打包浏览器预览
 // ------------------------------------------------------------------
@@ -254,7 +265,7 @@ async function runPreview() {
   const { js, css } = await bundle(path.join(ROOT, 'scripts/preview-entry.ts'), '../public/')
 
   fs.writeFileSync(path.join(outDir, 'bundle.js'), js)
-  fs.writeFileSync(path.join(outDir, 'bundle.css'), css)
+  fs.writeFileSync(path.join(outDir, 'bundle.css'), `${GLOBAL_CSS}\n${css}`)
   fs.writeFileSync(
     path.join(outDir, 'index.html'),
     `<!DOCTYPE html>

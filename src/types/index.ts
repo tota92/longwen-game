@@ -283,11 +283,16 @@ export interface EnemyState {
   skill: EnemySkill
 }
 
-/** 伤害/治疗飘字 */
+/**
+ * 伤害/治疗飘字
+ *
+ * 只记录"落在谁身上"，不记录屏幕坐标：飘字由战斗舞台（BattleStage.vue）
+ * 渲染在自己一方的角色头顶，因此宽屏双栏 / 竖屏单列的版式变化都不会让数字飘错位置。
+ */
 export interface FloatText {
   id: number
-  x: number
-  y: number
+  /** 数字落在哪一方身上（受击/受益方） */
+  side: 'hero' | 'enemy'
   text: string
   kind: 'damage' | 'heal' | 'skill' | 'crit' | 'info'
 }
@@ -308,6 +313,8 @@ export type HitFxKind =
   | 'impact'
   /** 治疗光辉 */
   | 'heal'
+  /** 施法蓄能：出手方身上的爆闪（技能/大招释放的前摇特效） */
+  | 'cast'
 
 /** 战斗展示区的命中特效实例 */
 export interface HitFx {

@@ -327,23 +327,24 @@ export const useGameStore = defineStore('game', () => {
     battle.guideDismissed = false
   }
 
-  function addFloat(text: string, kind: FloatText['kind']): void {
+  /**
+   * 伤害/治疗飘字入队。
+   * 飘字由战斗舞台渲染在"挨打/受益"那一方的角色头顶（FloatText.side），
+   * 不再按屏幕百分比定位，宽屏双栏与竖屏单列都不会飘错位置。
+   * @param side 数字落在哪一方身上；默认伤害归怪物、治疗归英雄，
+   *             敌人被治疗、英雄被打等相反情况由调用方显式指定
+   */
+  function addFloat(
+    text: string,
+    kind: FloatText['kind'],
+    side: 'hero' | 'enemy' = kind === 'heal' ? 'hero' : 'enemy'
+  ): void {
     // 系统提示统一走提示浮层，不再盖在棋盘格子上
     if (kind === 'info') {
       showTip(text)
       return
     }
-    // x 轴轻微抖动：避免同回合多条飘字完全重叠（连击/技能/状态同时出现时）
-    const ft: FloatText = {
-      id: uid++,
-      // 飘字贴着自己的阵营显示，锚定到顶部战斗展示区：
-      // 伤害/技能落在怪物立绘一侧（右），治疗/护盾落在英雄立绘一侧（左），
-      // 不再压在棋盘格子上（REQ-DAMAGE-006：飘字不遮挡棋盘操作区域）
-      x: (kind === 'heal' ? 26 : 74) + Math.round((Math.random() - 0.5) * 12),
-      y: 7 + Math.round(Math.random() * 5),
-      text,
-      kind
-    }
+    const ft: FloatText = { id: uid++, side, text, kind }
     floatTexts.value.push(ft)
     setTimeout(() => {
       floatTexts.value = floatTexts.value.filter((f) => f.id !== ft.id)
@@ -653,7 +654,7 @@ export const useGameStore = defineStore('game', () => {
     const healed = Math.min(enemy.phaseMaxHp - enemy.hp, amount)
     if (healed <= 0) return
     enemy.hp += healed
-    addFloat(`${enemy.display} 回复 ${healed}`, 'heal')
+    addFloat(`${enemy.display} 回复 ${healed}`, 'heal', 'enemy')
   }
 
   /** 给玩家施加灼烧/中毒（可叠加层数，持续时间取较长者，REQ-HERO-101 同规则） */
@@ -679,7 +680,7 @@ export const useGameStore = defineStore('game', () => {
       const st = kind === 'burn' ? battle.playerBurn : battle.playerPoison
       if (!st) continue
       battle.playerHP = Math.max(0, battle.playerHP - st.damage)
-      addFloat(`-${st.damage} (${kind === 'burn' ? '灼烧' : '中毒'})`, 'damage')
+      addFloat(`-${st.damage} (${kind === 'burn' ? '灼烧' : '中毒'})`, 'damage', 'hero')
       st.turns--
       if (st.turns <= 0) {
         if (kind === 'burn') battle.playerBurn = null
@@ -701,7 +702,7 @@ export const useGameStore = defineStore('game', () => {
     }
     if (rest > 0) {
       battle.playerHP = Math.max(0, battle.playerHP - rest)
-      addFloat(`-${rest}`, 'damage')
+      addFloat(`-${rest}`, 'damage', 'hero')
       doShake()
       audio.play('hit')
       // 战斗展示区反馈：怪物出手，英雄受击
@@ -743,6 +744,8 @@ export const useGameStore = defineStore('game', () => {
     audio.play('skill')
     // 纯辅助技能（只回血/加盾）不经过 dealDamageToEnemy，这里统一给出"英雄施法"姿态
     setActorAction('hero', 'attack')
+    // 施法蓄能特效用例：出手方身上的爆闪，让"技能释放"有明确前摇（战斗舞台渲染）
+    spawnHitFx('cast', 'hero', hero.color)
     await sleep(150) // 让特写先入场
 
     const firePassive = supports.value.some((h) => h.passiveId === 'fireSkillUp')
@@ -1087,6 +1090,8 @@ export const useGameStore = defineStore('game', () => {
       addFloat(`${enemy.display} 释放「${charge.release}」！`, 'info')
       doFlash()
       doShake()
+      // 大招释放：怪物身上的蓄能爆闪 + 英雄被重击
+      spawnHitFx('cast', 'enemy', enemyColor())
       damagePlayer(charge.damage)
       await sleep(200)
       return null
