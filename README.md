@@ -15,6 +15,7 @@
 npm install      # 安装依赖
 npm run dev      # 启动开发服务器（http://localhost:5173，支持局域网真机调试）
 npm run build    # 类型检查 + 生产构建（输出 dist/）
+npm run build-mobile  # 打包单文件 HTML（全部资源内联，可直接发到手机离线玩，见下）
 npm run preview  # 预览生产构建
 npm run test     # 核心逻辑冒烟测试（109 项断言：棋盘引擎/数值公式/元素克制/护甲/狂怒/配置自洽）
 npm run balance  # 数值审计：用真实引擎模拟 15 关（难度/决策质量/换英雄差异），见下
@@ -24,6 +25,15 @@ npm run icons    # 重新生成全套图标资源（SVG → 256×256 透明 PNG�
 
 > 生产构建体积约 **63 KB (gzip)** JS + **14 KB** CSS；图标资源独立为 62 枚 PNG（合计约 950 KB，平均 15 KB/枚）。
 > 音效由 Web Audio 实时合成，无音频文件依赖。
+
+### 单文件移动端分发（`npm run build-mobile`）
+
+把整个游戏打包为**一个 .html 文件**（默认 `release/longwen-match3.html`）：JS / CSS / 62 枚图标 / 8 张立绘 / PWA manifest 全部 Base64 内联，构建完成自动校验“零外部引用”并打印产物路径与体积。
+
+- **零依赖运行**：发送到手机后用任意浏览器打开即可游玩（`file://` 本地文件、微信内置浏览器、任意静态托管均支持），无需网络与服务器；
+- **移动端适配**：内联产物使用 classic script（兼容微信 X5 等旧内核）、注入 viewport / theme-color / 微信·UC 全屏等 meta、data URI 形式的 manifest 与 apple-touch-icon、`touch-action: manipulation` 触摸优化；
+- **可选参数**：`npm run build-mobile -- --no-minify`（排障，不压缩）、`-- --out dist-h5`、`-- --name game.html`；
+- **实现**：`vite.config.mobile.ts` + `scripts/mobile/` 三个插件（资源内联表 / JS·CSS 单文件化 / 移动端 meta 与 PWA 注入）；运行期由 `src/utils/assetUrl.ts` 优先命中内联表、未命中回退 `public/`，两种构建形态共用同一份源码。
 
 ## 玩法速览
 
@@ -56,6 +66,7 @@ src/
 ├── stores/game.ts          # 【编排层】Pinia：回合状态机/敌人AI/遗物/DDA/快照存档
 ├── utils/
 │   ├── icons.ts            #   图标运行时（iconUrl / 预加载，ID 类型来自 config/iconIds.ts）
+│   ├── assetUrl.ts         #   资源 URL 统一解析（常规构建走 public/，单文件构建命中内联 Data URI 表）
 │   ├── storage.ts          #   localStorage 存档（静默降级 REQ-SAVE-003）
 │   ├── audio.ts            #   Web Audio 合成音效（连击音阶递升，零资源）
 │   └── anim.ts             #   sleep/随机采样工具
